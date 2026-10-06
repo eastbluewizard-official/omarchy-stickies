@@ -1,0 +1,51 @@
+name: Bug report
+description: Something doesn't work as described.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: >-
+        The last lines of ~/.local/state/stickies/stickies.log, and for key
+        problems the output of `hyprctl binds | grep -i stick` and
+        `stickies keys status`. Remove anything private from note text.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Versions
+      description: Stickies (manifest.json), Omarchy, Hyprland (`hyprctl version`), Python.
+      placeholder: stickies 1.0.0, Omarchy 3.x, Hyprland 0.56.2, Python 3.14
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installed with
+      options:
+        - omarchy plugin add
+        - git clone + install.sh
+    validations:
+      required: true
+  - type: dropdown
+    id: semantic
+    attributes:
+      label: Search by meaning set up (`stickies setup --status`)
+      options:
+        - "yes"
+        - "no"

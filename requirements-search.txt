@@ -1,0 +1,21 @@
+# What `stickies setup` pip-installs into ~/.cache/stickies/venv for search
+# by meaning, and nothing else. Exact versions, one wheel each, checked by
+# sha256 (pip --require-hashes --only-binary=:all: --no-deps): a changed or
+# re-uploaded file on PyPI fails the install instead of being used.
+#
+# Wheels: CPython 3.14 (Arch's `python`), manylinux x86_64. Any other Python
+# or CPU has no matching hash, so `stickies setup` says so before it
+# downloads anything; search then uses words only.
+#
+# --no-deps: these four are all search needs at run time (tested). The
+# declared extras (onnxruntime: flatbuffers, packaging, protobuf;
+# tokenizers: huggingface-hub and its HTTP stack) are for model export and
+# the Hub download API, which stickies does not use: it loads local files.
+#
+# Checked 2026-10-06: each is the latest release on PyPI, with no known
+# vulnerabilities in OSV (osv.dev). To move a pin, update the version and
+# hash here, then the list in LICENSE and CHANGELOG.md.
+onnxruntime==1.30.0 --hash=sha256:8b611d24db2954545ce6bd9acd4670183cb368e4642450de7a9ab6474eb374ec
+numpy==2.5.3 --hash=sha256:b0521d0f4aebb6e06189451025fa17a913287b13c03d5fe05c017333b654ea5b
+tokenizers==0.23.2 --hash=sha256:41c2f84d172449b4dadb9cdc508e3e364076613c35b16e76ecfe47a60d1e3305
+sentencepiece==0.2.2 --hash=sha256:8d44b20234905ff022b7d535f79d1f823ad7670c9851cc4f03cdc34787cdb3ab

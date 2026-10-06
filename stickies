@@ -1,0 +1,45 @@
+#!/usr/bin/env python3
+# stickies -- the command. Everything lives in stickies.py next to this file;
+# this launcher only saves Python from compiling those ~2,400 lines on every
+# run (~20 ms of a ~75 ms cold start): a script is never byte-code cached,
+# an imported module is. The cache goes to $STICKIES_CACHE/pycache
+# (~/.cache/stickies/pycache), never next to the code: a write inside an
+# installed plugin folder makes omarchy-shell reload its plugins.
+import marshal
+import os
+import sys
+
+here = os.path.dirname(os.path.realpath(__file__))
+src = os.path.join(here, "stickies.py")
+cache = (os.environ.get("STICKIES_CACHE")
+         or os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "stickies"))
+st = os.stat(src)
+stamp = f"{sys.implementation.cache_tag} {st.st_mtime_ns} {st.st_size} {src}\n".encode()
+pyc = os.path.join(cache, "pycache", f"stickies.{sys.implementation.cache_tag}.pyc")
+code = None
+try:
+    with open(pyc, "rb") as f:
+        if f.readline() == stamp:
+            code = marshal.load(f)
+except (OSError, ValueError, EOFError, TypeError):
+    pass
+if code is None:
+    with open(src, "rb") as f:
+        code = compile(f.read(), src, "exec")
+    try:
+        if sys.dont_write_bytecode:  # PYTHONDONTWRITEBYTECODE / -B, as for imports
+            raise OSError
+        os.makedirs(os.path.dirname(pyc), exist_ok=True)
+        tmp = f"{pyc}.{os.getpid()}"
+        with open(tmp, "wb") as f:
+            f.write(stamp)
+            marshal.dump(code, f)
+        os.replace(tmp, pyc)
+    except OSError:
+        pass
+
+mod = type(sys)("stickies")
+mod.__file__ = src
+sys.modules["stickies"] = mod
+exec(code, mod.__dict__)
+sys.exit(mod.main())

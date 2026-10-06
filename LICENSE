@@ -1,0 +1,45 @@
+MIT License
+
+Copyright (c) 2026 Ricardo Otto (eastbluewizard-official)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---------------------------------------------------------------------------
+External dependencies (not included in this repository)
+
+Stickies itself uses only the Python standard library and SQLite. The
+optional search by meaning (`stickies setup`, which asks first) downloads
+into ~/.cache/stickies:
+
+- from PyPI, into a Python venv, exact versions checked by sha256
+  (requirements-search.txt):
+    onnxruntime 1.30.0 (MIT)
+    numpy 2.5.3 (BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0)
+    tokenizers 0.23.2 (Apache-2.0)
+    sentencepiece 0.2.2 (Apache-2.0)
+  Stickies switches off onnxruntime's built-in telemetry
+  (ORT_DISABLE_TELEMETRY=1);
+- the default model, intfloat/multilingual-e5-small (MIT), int8 ONNX, from
+  huggingface.co, pinned to a commit and checked by size and sha256.
+  Selectable instead: sentence-transformers/all-MiniLM-L6-v2 (Apache-2.0),
+  sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 (Apache-2.0),
+  BAAI/bge-small-en-v1.5 (MIT).
+
+At run time it calls, when present: omarchy-shell, hyprctl, and Omarchy's
+default agent (`claude`; chat only, with the notes you choose to send).

@@ -1,0 +1,24 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  unittest:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.14"]  # the version it is developed and measured on
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Standard-library tests
+        # Tests that need Omarchy (omarchy-plugin-validate), node or the
+        # embedding model skip themselves and say why.
+        run: python -m unittest discover -s tests -v

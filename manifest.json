@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "eastbluewizard.stickies",
+  "name": "Stickies",
+  "version": "1.3.0",
+  "author": "eastbluewizard-official",
+  "license": "MIT",
+  "description": "Sticky notes on your desktop: waterfall layout, tags, checklists, reminders. Find notes by meaning offline, and ask your notes.",
+  "kinds": ["service", "bar-widget"],
+  "entryPoints": {
+    "service": "Service.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Stickies",
+    "description": "Note count; click for pinned + recent notes, a quick-capture field, search, tidy and the layout picker.",
+    "category": "Productivity",
+    "aliases": ["stickies", "notes"],
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}

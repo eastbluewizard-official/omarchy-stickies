@@ -6,7 +6,8 @@ long-running `stickies serve` (JSON lines over stdin/stdout); agents and
 humans use the subcommands, every read takes --json.
 
 State lives in $STICKIES_STATE (default ~/.local/state/stickies/):
-stickies.db (notes, FTS5 index, embeddings, change log) and stickies.log.
+stickies.db (notes, FTS5 index, embeddings, change log) and stickies.log;
+the dir is 0700 and its files 0600 (make_private).
 
 Semantic search is optional and fully local: `stickies setup` (once, with
 consent) makes a venv under ~/.cache/stickies with onnxruntime + tokenizers and
@@ -21,6 +22,7 @@ import os
 import re
 import shlex
 import sqlite3
+import stat
 import sys
 import threading
 import time
@@ -251,8 +253,45 @@ SETTINGS = {
 
 def state_dir():
     d = os.environ.get("STICKIES_STATE") or os.path.expanduser("~/.local/state/stickies")
-    os.makedirs(d, exist_ok=True)
+    private_dir(d)
     return d
+
+
+# The state holds every note body: the dir is 0700, its files 0600, under
+# any umask. make_private also repairs an install from before 1.3.1 (0755 /
+# 0644), but only what we own and never through a symlink, so a
+# STICKIES_STATE pointing somewhere shared is left as it is.
+PRIVATE_DIR, PRIVATE_FILE = 0o700, 0o600
+
+
+def make_private(path, mode):
+    try:
+        st = os.lstat(path)
+        if (not stat.S_ISLNK(st.st_mode) and st.st_uid == os.getuid()
+                and stat.S_IMODE(st.st_mode) != mode):
+            os.chmod(path, mode)
+    except OSError:
+        pass
+
+
+def private_dir(d):
+    os.makedirs(d, mode=PRIVATE_DIR, exist_ok=True)  # mode: new dirs only, minus umask
+    make_private(d, PRIVATE_DIR)
+
+
+def open_private(path, mode="a"):
+    """open() for a file in the state dir: created 0600, and an existing one
+    of ours is made 0600."""
+    flags = os.O_WRONLY | os.O_CREAT | os.O_CLOEXEC | (os.O_APPEND if mode == "a" else os.O_TRUNC)
+    fd = os.open(path, flags, PRIVATE_FILE)
+    try:
+        st = os.fstat(fd)
+        if st.st_uid == os.getuid() and stat.S_IMODE(st.st_mode) != PRIVATE_FILE:
+            os.fchmod(fd, PRIVATE_FILE)
+        return os.fdopen(fd, mode)
+    except BaseException:
+        os.close(fd)
+        raise
 
 
 def now_iso():
@@ -1085,9 +1124,21 @@ class Store:
     def __init__(self, path=None, embedder="auto"):
         self.dir = state_dir() if path is None else os.path.dirname(path)
         self.path = path or os.path.join(self.dir, "stickies.db")
+        # Created 0600 before SQLite sees it: SQLite gives its -wal and -shm
+        # the main file's mode (whatever the umask), so they are 0600 too.
+        try:
+            os.close(os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC, PRIVATE_FILE))
+        except OSError:  # there already (or not ours to create: SQLite says why)
+            pass
         self.db = sqlite3.connect(self.path, timeout=5.0, isolation_level=None)
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA journal_mode=WAL")
+        # Repair files an older version left 0644 (an existing -wal / -shm
+        # keeps its mode, so they need it as well as the db).
+        for name in ("", "-wal", "-shm", "-journal"):
+            make_private(self.path + name, PRIVATE_FILE)
+        for name in ("stickies.log", "integration.json"):
+            make_private(os.path.join(self.dir, name), PRIVATE_FILE)
         self.db.execute("PRAGMA synchronous=NORMAL")
         self.db.execute("PRAGMA foreign_keys=ON")
         if self.db.execute("PRAGMA user_version").fetchone()[0] < SCHEMA_VERSION:
@@ -1154,7 +1205,7 @@ class Store:
     @staticmethod
     def log_line(msg, d=None):
         try:
-            with open(os.path.join(d or state_dir(), "stickies.log"), "a") as f:
+            with open_private(os.path.join(d or state_dir(), "stickies.log")) as f:
                 f.write(f"{now_iso()} {msg}\n")
         except OSError:
             pass
@@ -1942,9 +1993,8 @@ def read_integration():
 
 
 def write_integration(d):
-    os.makedirs(state_dir(), exist_ok=True)
     tmp = integration_file() + ".tmp"
-    with open(tmp, "w") as f:
+    with open_private(tmp, "w") as f:
         json.dump(d, f)
     os.replace(tmp, integration_file())
 
@@ -2818,7 +2868,7 @@ def run_agent(prompt, on_delta=None, timeout=CHAT_TIMEOUT, on_start=None):
     try:
         # Its own empty cwd: no project files or CLAUDE.md for it to pick up.
         cwd = os.path.join(state_dir(), "agent")
-        os.makedirs(cwd, exist_ok=True)
+        private_dir(cwd)
         proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, cwd=cwd, start_new_session=True)
     except OSError as e:

@@ -2,6 +2,22 @@
 
 All notable changes. Versions follow `manifest.json`; dates are ISO.
 
+## 1.3.1 - 2026-10-07
+
+### Security
+
+- Your notes are private to your user. Under the usual umask 022 the state
+  folder (`~/.local/state/stickies`) was created 0755 and `stickies.db`,
+  its `-wal` and `-shm`, `stickies.log` and `integration.json` 0644, so
+  any other account on the machine could read every note. The folder is
+  now 0700 and every file in it 0600, whatever the umask. An existing
+  install is repaired the next time stickies opens its database (any
+  `stickies` command, or the shell starting `serve`). Only files and
+  folders you own are changed, and never through a symlink, so a
+  `STICKIES_STATE` that points at a shared or someone else's folder is
+  left as it is. `~/.cache/stickies` holds no note text (the model, the
+  venv, byte code) and keeps its mode.
+
 ## 1.3.0 - 2026-10-06
 
 ### Fixed

@@ -3,7 +3,7 @@
 Sticky notes that live on your Omarchy desktop, find any note by its words
 or its meaning offline, and let you ask questions about them.
 
-[![version](https://img.shields.io/badge/version-1.3.0-informational)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-1.3.1-informational)](CHANGELOG.md)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Omarchy plugin](https://img.shields.io/badge/Omarchy-plugin-555)](https://omarchy.org)
 
@@ -225,6 +225,11 @@ anything nor writes its device id
 `~/.local/state/stickies/stickies.db`, the model and venv in
 `~/.cache/stickies/`, and Stickies writes nowhere else except the two
 things set-up adds (the keys file and `~/.local/bin/stickies`).
+
+**Your notes are yours alone.** The state folder is kept 0700 and every
+file in it (the database, its `-wal` and `-shm`, the log) 0600, whatever
+your umask, so other accounts on the machine cannot read them. Older
+installs are fixed the first time 1.3.1 runs.
 
 More detail: [docs/search.md](docs/search.md) (including how the model was
 chosen) and [docs/chat.md](docs/chat.md).

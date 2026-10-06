@@ -115,7 +115,7 @@ class CliTest(TempState):
 
 class FrontModeQmlTest(unittest.TestCase):
     """Static checks of the shell plugin; the live behaviour (hyprctl layers
-    level, keyboard, click-outside) is in docs/PERF.md."""
+    level, keyboard, click-outside) was measured on a live session."""
 
     def setUp(self):
         self.src = qml_sources()

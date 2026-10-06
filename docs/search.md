@@ -2,8 +2,9 @@
 
 Search runs on your machine, always: SQLite FTS5 for words, a small local
 embedding model for meaning, fused. Nothing about a search leaves the
-machine, and once the model is installed it works with Wi-Fi off. Measured
-numbers: [PERF.md](PERF.md#search-benchpy).
+machine, and once the model is installed it works with Wi-Fi off. On 2,000
+notes a search takes a few milliseconds by words and 18-40 ms (median) with
+meaning, on a laptop CPU.
 
 ## How search works
 
@@ -120,8 +121,8 @@ from any other process (an agent's `stickies add`). Moving or recolouring a
 note doesn't re-embed it.
 
 **Idle unload.** After 10 minutes with no search and no embedding, serve
-drops the model and hands its memory back to the system (`malloc_trim`;
-see [PERF.md](PERF.md#120-idle-unload-of-the-model-bench_unloadpy-2026-10-06)).
+drops the model and hands its memory back to the system (`malloc_trim`:
+serve goes from about 250 MB to 87 MB).
 The next search that wants meaning loads it again on the same background
 thread: the overlay shows the words-only hits at once and asks again when
 the model is back, so by-meaning hits fill in without a key press. A note
@@ -134,13 +135,11 @@ the CLI. Embedding runs with 4 threads, no busy-waiting, so serve idles at
 
 ## Which model: measured on the reference laptop
 
-`eval_embed.py` (kept in the development workspace with its eval set, not in
-the published repo) compared candidates on the reference i7-8550U (4 cores, AVX2, no
-GPU), each in its own process: quality on a hand-made eval set
-(`eval/notes.json`: 105 notes in the style of this business and life,
-English and Dutch; `eval/queries.json`: 42 queries with their relevant
-notes, by kind: 6 keyword, 22 paraphrase, 6 Dutch, 8 cross-language),
-index time over the 2,000 notes from `bench.py`, query latency and RSS.
+Candidates were compared on the reference i7-8550U (4 cores, AVX2, no
+GPU), each in its own process: quality on a hand-made eval set (105
+notes in English and Dutch, 42 queries with their relevant notes, by kind:
+6 keyword, 22 paraphrase, 6 Dutch, 8 cross-language; kept out of this
+repo), index time over 2,000 generated notes, query latency and RSS.
 R@5 = share of queries with a relevant note in the top 5; MRR over the top
 10. 2026-10-05, onnxruntime 1.30, 4 threads:
 

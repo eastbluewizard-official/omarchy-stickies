@@ -5,10 +5,11 @@ import Quickshell.Wayland
 import qs.Commons
 import "stickies"
 
-// Bench / screenshot harness for the stickies plugin. bench_shell.py copies
-// this to <tmp>/shell.qml next to symlinks `Commons` (the system shell's)
-// and `stickies` (this repo: the plugin is its root), then runs `quickshell -p <tmp>` with
-// a temp STICKIES_STATE. Results are printed as one `BENCH {...}` line.
+// Harness that runs the stickies plugin outside the live shell: copied to
+// <tmp>/shell.qml next to symlinks `Commons` (the system shell's) and
+// `stickies` (this repo: the plugin is its root), then run with
+// `quickshell -p <tmp>` and a temp STICKIES_STATE. Results are printed as one
+// `BENCH {...}` line.
 ShellRoot {
   id: harness
 

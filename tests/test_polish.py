@@ -1,6 +1,6 @@
 """The polish pass: checklists, undo, theme colours (test_shell), roll-up,
 tidy, quick capture from the clipboard, reminders, and plain-word errors.
-The live behaviour of each (and its cost) is bench_polish.py, docs/PERF.md."""
+The live behaviour of each (and its cost) is measured on a live session."""
 
 import io
 import json

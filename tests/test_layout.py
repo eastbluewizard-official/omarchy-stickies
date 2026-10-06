@@ -2,8 +2,8 @@
 CLI and serve (the CLI stays the only writer; serve pushes a settings event
 to every surface), the pure-JS column geometry (shell/waterfall.js, under
 node), and static checks of the column surface. The live behaviour (both
-layers, tiled windows, drags, frame times) is in docs/PERF.md, measured
-with bench_waterfall.py."""
+layers, tiled windows, drags, frame times) is measured on a live
+session."""
 
 import json
 import os
@@ -284,7 +284,7 @@ class WaterfallGeometryTest(unittest.TestCase):
 
 
 class WaterfallQmlTest(unittest.TestCase):
-    """Static checks; the live run is bench_waterfall.py (docs/PERF.md)."""
+    """Static checks; the live behaviour is measured on a live session."""
 
     def setUp(self):
         self.src = qml_sources()

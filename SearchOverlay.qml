@@ -28,7 +28,7 @@ PanelWindow {
   // newest query, sent when the answer comes back.
   property bool inFlight: false
   property string pending: ""
-  // Bumped each time a result list lands (bench_search.py times it).
+  // Bumped each time a result list lands (for timing it).
   property int resultsSeq: 0
   // The list on screen is words only because the model was still loading.
   property bool wordsOnly: false

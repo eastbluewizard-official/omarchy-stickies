@@ -30,7 +30,7 @@ PanelWindow {
   property string query: ""
   property int selected: 0
   // Bumped when serve's rows land / when they differ from the shown ones
-  // (bench_list.py times both).
+  // (for timing both).
   property int rowsSeq: 0
   property int rowsChanges: 0
   readonly property alias field: field

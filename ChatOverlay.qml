@@ -34,7 +34,7 @@ PanelWindow {
   property int chatSeq: 0
   // "<turn>:<proposal>" -> { state: "applying"|"applied"|"dismissed"|"error", msg }
   property var propState: ({})
-  // Bumped when an answer finishes (bench_chat.py times it).
+  // Bumped when an answer finishes (for timing it).
   property int answersSeq: 0
   readonly property alias field: field
   readonly property alias card: card  // benches: where the panel is

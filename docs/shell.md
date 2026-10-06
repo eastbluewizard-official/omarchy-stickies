@@ -49,7 +49,7 @@ symlinks, and the shell's `inotifywait -r` sees nothing through one).
 An install from before 1.3.0 symlinked a checkout into the plugins folder.
 The next `stickies integrate` or `install.sh` replaces that link with a
 `git clone` of the checkout (`migrate_symlink`; the notes are not
-touched). Tests and benches never do this: with `STICKIES_STATE` set, the
+touched). Tests never do this: with `STICKIES_STATE` set, the
 plugins folder is out of reach unless `STICKIES_PLUGINS` names one.
 
 **New QML needs a shell restart.** Measured 2026-10-06 (Quickshell 0.3.1)
@@ -142,8 +142,7 @@ on every failure (shell down,
 plugin not loaded, unknown method) and left a dead key with no trace. On
 failure `stickies shell` tries once more and writes
 `shell <m> failed: <reason>` to `stickies.log`. The fast path costs no
-Python start (36 ms key -> notes on the Top layer, see
-[PERF.md](PERF.md)).
+Python start (36 ms key -> notes on the Top layer).
 
 ## Front mode
 
@@ -259,7 +258,7 @@ the glide at once.
   6 px (a faint accent guide line shows which), otherwise to an 8 px grid.
   Hold **Shift** to place it freely. The guides are parked off-screen when
   unused rather than hidden: toggling `visible` re-batched every card and
-  showed up in the frame times (see [PERF.md](PERF.md)).
+  showed up in the frame times.
 - **Toast.** One per desktop, on the screen that caused it, for 6 s:
   *Archived - Undo* (restores that note), *Tidied 6 notes - Undo*, or a
   plain sentence when something didn't work (an image on the clipboard,
@@ -274,7 +273,7 @@ the theme: each name is a hue tinted toward `Color.background` from
 ink is tinted toward `Color.foreground`. omarchy-shell swaps those on a
 theme switch, so every card, swatch and the `+` button recolour live, in
 one frame (~12 ms to the swapped frame with the waterfall column surface
-also recolouring, measured by bench_polish.py).
+also recolouring, measured).
 
 ## Tidy and quick capture
 
@@ -339,7 +338,7 @@ monitor.
 - Data: serve's `list` with `brief: true`: per note only `id`, `title`,
   `hay` (lower-cased first 500 characters + tags), `color`, `pinned`,
   `workspace`, `tags`, `remind_at`, `updated_at`, `checks` ([done, total]),
-  1.3 MB for the bench's 2,000 long notes (1.5 MB as full rows). Filtering is local
+  1.3 MB for 2,000 long notes (1.5 MB as full rows). Filtering is local
   JS over those rows. Opening maps the surface with the rows from last time
   and asks for fresh ones after its first frame (parsing them first held
   that frame back); an unchanged list is not reassigned, and a changed one
@@ -492,7 +491,7 @@ Only through one long-running `stickies serve` (JSON lines, see
 writes from other processes (they poke serve's socket, so the desktop shows
 an agent's `stickies add` at once). If serve exits it is restarted after
 1.5 s. The command is the plugin's own `stickies`, resolved from the QML
-file's location; `STICKIES_CMD` overrides it (tests, benches).
+file's location; `STICKIES_CMD` overrides it (tests).
 
 Nothing polls: no repeating timer runs while the desktop is idle, and serve
 sleeps in `select()` until a request, a poke or a deadline (the hub card's
@@ -520,12 +519,6 @@ debounce) arrives. The model being loaded is pushed as an event too.
 - `markup.js` -- the escaping both `.js` files share.
 - `stickies`, `stickies.py` -- the command the service runs (`serve`).
 
-Dev/bench-only environment knobs (never set in a session):
+Development-only environment knobs (never set in a session):
 `STICKIES_LAYER=overlay`, `STICKIES_FOCUS=exclusive`, `STICKIES_COLUMN_SCREEN=<output>`
 (pins the column to one output, e.g. a headless test output).
-
-## Measured
-
-All numbers (drag frame times, keystroke latency, start-up, bar panel,
-search and chat overlays), how each bench drives the plugin, and what
-could not be measured on this machine: [PERF.md](PERF.md).

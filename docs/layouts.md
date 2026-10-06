@@ -28,7 +28,7 @@ every surface follows a change wherever it was made.
 - **Nothing moves for good.** The column never touches a note's free
   position: switch back to free and every note is exactly where it was.
   Switching glides the notes between their spots and the column (130 ms,
-  at the display's frame rate; [measured](PERF.md#layouts-bench_waterfallpy)).
+  at the display's frame rate, measured).
 
 | reserve on | rotated monitor |
 |---|---|

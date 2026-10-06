@@ -1,6 +1,6 @@
 """The desktop plugin (the repo root): manifest, install, and the serve contract it
-relies on. Rendering, drag and typing are measured by bench_shell.py, which
-needs a live Wayland session and so is not part of the unit tests."""
+relies on. Rendering, drag and typing need a live Wayland session, so they
+are measured there, not in the unit tests."""
 
 import glob
 import json

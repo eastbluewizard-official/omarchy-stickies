@@ -325,7 +325,7 @@ library:
 
     python3 -m unittest discover -s tests
 
-[CONTRIBUTING.md](CONTRIBUTING.md) covers the benches, the screenshots and
+[CONTRIBUTING.md](CONTRIBUTING.md) covers running your checkout, the tests and
 the rules the numbers have to keep. Changes are listed in
 [CHANGELOG.md](CHANGELOG.md).
 

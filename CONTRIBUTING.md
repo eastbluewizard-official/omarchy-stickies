@@ -29,8 +29,8 @@ improvements are all welcome.
 - **Smooth is measured, not assumed.** The budgets: drag and resize at the
   screen's frame rate, keystroke to glyph < 16 ms, search < 50 ms by words
   and < 300 ms with meaning on 2,000 notes, panels open < 100 ms. A change
-  that moves a number updates [docs/PERF.md](docs/PERF.md) with real
-  measurements, never estimates.
+  that moves a number says what it measured, before and after, never
+  estimates.
 
 ## Running your checkout
 
@@ -61,9 +61,7 @@ they are.
 The running shell keeps the QML it loaded. After an update it reloads its
 plugins but gets the old components back (it can't clear Quickshell's
 component cache), so QML changes need `omarchy-restart-shell`. The
-plugin's `serve` restarts with the new Python and reports this once. To
-try QML without touching your desktop, run the benches: each one runs the
-plugin in its own `quickshell -p` with a temp state.
+plugin's `serve` restarts with the new Python and reports this once.
 
 ## Tests
 
@@ -95,46 +93,8 @@ proves it was not called. Hyprland keybindings are tested against a fake
 - Tests that need `node` (the QML's JavaScript helpers) or
   `omarchy-plugin-validate` skip without them.
 
-## Benches
-
-The QML benches run the real plugin in their own short-lived `quickshell
--p` next to your live shell, on the Overlay layer, with a temp state. They
-briefly cover your screen.
-
-    python3 bench_cold.py                         # cold CLI start, import costs
-    python3 bench_idle.py                         # idle serve: CPU and wake-ups
-    python3 bench.py [--notes 2000] [--json]      # search: in-process, serve, cold CLI (+ meaning once set up)
-    python3 bench_shell.py [--visible 40] [--hidden 2000] [--no-type] [--json]   # drag, typing, start-up
-    python3 bench_bar.py                          # bar widget
-    python3 bench_search.py                       # search overlay (needs the model)
-    python3 bench_chat.py [--real]                # chat overlay (fake agent; --real uses claude -p)
-    python3 bench_waterfall.py [--notes 40]       # layout switch glide + column scroll frame times
-    python3 bench_polish.py                       # checklists, roll-up, tidy, snapping, theme switch
-
-`bench_shell.py` without `--no-type` sends real key events with `wtype` and
-holds the keyboard for about 3 s, so don't type while it runs.
-
-## Screenshots
-
-Made from demo notes in a temp state, never from your own:
-
-    python3 bench_shell.py --shot docs/polish.png --dark --plain       # checklists, a reminder bell, a rolled-up note
-    python3 bench_shell.py --shot docs/first-run.png --empty --light --wall plain.png   # plain.png: any solid colour image
-    python3 bench_waterfall.py --shots docs/layout --output NAME --light --wall plain.png \
-        --layouts free,waterfall-right,waterfall-left,waterfall-right+reserve   # crop the bar off, see below
-    python3 bench_search.py --notes 200 --shot docs/search.png
-    python3 bench_chat.py --notes 0 --real --shot docs/chat.png
-
-The overlays are cropped to their panel, so nothing else on your screen ends
-up in the picture. The layout shots are whole outputs: use a headless one
-(`hyprctl output create headless`) with neutral test windows on it, and crop
-the top bar off afterwards, since the bar shows your own widgets.
-`preview.png` (the marketplace and README picture) is the waterfall-right
-shot.
-
 ## Pull requests
 
 Keep them small and say what you measured. Run the tests first. For UI
 changes, add a screenshot. For anything on a hot path (drag, typing, search,
-panel open, start-up), add before and after numbers from the bench that
-covers it.
+panel open, start-up), add before and after numbers and how you took them.

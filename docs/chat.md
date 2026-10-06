@@ -64,8 +64,7 @@ answer streams to the terminal, followed by what was sent and cited and a
 ready-to-run `stickies apply ...` line per proposal. Agent failures are
 `{"error": ...}` with exit 1.
 
-Measured with a fake agent and the real `claude -p`, 2,003 notes
-(`python3 bench_chat.py [--real]`, details in [PERF.md](PERF.md)):
+Measured with a fake agent and the real `claude -p`, 2,003 notes:
 the notes for a question are listed ~40-47 ms after Enter. With claude, the
 first words appear ~2.8 s after Send, and a short answer is complete in
 ~4.7 s.

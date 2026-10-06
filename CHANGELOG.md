@@ -65,14 +65,12 @@ All notable changes. Versions follow `manifest.json`; dates are ISO.
 - `stickies setup --status` also shows the idle time and whether the
   running serve has the model loaded right now, since when and until when
   (`serve` field in `--json`; `{"op": "model"}` on serve's socket).
-- `bench_unload.py`: RSS loaded / unloaded, the first search after an
-  unload, wake-ups.
 
 ### Changed
 
 - serve drops the embedding model after 10 minutes with no search and no
   embedding and hands the memory back (`malloc_trim`): RSS 245-272 MB ->
-  87 MB on 2,003 notes, 0 wake-ups once it is gone (docs/PERF.md). The
+  87 MB on 2,003 notes, 0 wake-ups once it is gone. The
   next search loads it again in the background (~0.5 s): words-only hits
   come at once, by-meaning hits fill in when it is back (the search
   overlay and the chat's note preview ask again by themselves). A note
@@ -111,7 +109,7 @@ All notable changes. Versions follow `manifest.json`; dates are ISO.
   notes*), from `stickies list --open [--tag X]`, and over IPC
   (`omarchy-shell stickies list`, `listTag "work op-09"`).
 - Chat may propose tags with a new note.
-- `stickies integrate --refresh`, and `bench_list.py`.
+- `stickies integrate --refresh`.
 
 ### Changed
 
@@ -147,7 +145,6 @@ First public release.
   when the plugin is unloaded. A key that is already bound is left alone.
 - `stickies integrate`, `stickies keys on|off|status` and
   `stickies uninstall [--purge]`.
-- `bench_cold.py` (cold start) and `bench_idle.py` (idle serve cost).
 - The runtime keys cover all seven: N, SHIFT + N, V, J, A, L and W (with
   SUPER + ALT), the same as the drop-in.
 - README for new users, CONTRIBUTING, issue templates, a GitHub Actions

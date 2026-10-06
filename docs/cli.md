@@ -122,7 +122,7 @@ the last-edited note's first line. Clicking a tile runs
 It is published by `stickies hub`, by `serve` 2 s after the last change
 (and once at start; that covers writes from agents too), and in the
 background after each CLI write. Automatic publishing is off while
-`$STICKIES_STATE` is set, so tests and benches never overwrite the real
+`$STICKIES_STATE` is set, so tests never overwrite the real
 card; `STICKIES_HUB` names the hub executable (empty disables, tests point
 it at a fake). `hub` has no `module remove`, so uninstall leaves the last
 card in place.

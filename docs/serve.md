@@ -89,8 +89,7 @@ Change events come for writes from this serve process (sent right after the
 response) *and* from any other process, e.g. an agent running `stickies
 add`: the writer pokes `serve.sock`, so the event follows the write within
 a millisecond or two, with no polling. Idle, serve sleeps in `select()`
-with no timeout (measured: 0 wake-ups a minute, see
-[PERF.md](PERF.md#idle)); only if the socket can't be opened does it fall
+with no timeout (measured: 0 wake-ups a minute); only if the socket can't be opened does it fall
 back to checking `PRAGMA data_version` once a second. Several changes to
 one note between checks are coalesced into one event with the final
 state.

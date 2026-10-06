@@ -17,7 +17,7 @@ Panel {
   property var anchorItem: null
   property var hostWidget: null
   property QtObject service: null
-  // For bench_bar.py, which times the popup window's first frame.
+  // For timing the popup window's first frame.
   property alias popup: panel
 
   readonly property int recentLimit: 8

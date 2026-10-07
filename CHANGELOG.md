@@ -2,6 +2,43 @@
 
 All notable changes. Versions follow `manifest.json`; dates are ISO.
 
+## 1.3.2 - 2026-10-07
+
+### Security
+
+- Note text no longer shows up in other processes' command lines. On
+  Linux every local account can read any process's arguments
+  (`/proc/<pid>/cmdline`, `ps`), so three places leaked note text to
+  them without any access to the database:
+  - Reminders ran `notify-send` with the reminder's text as an argument.
+    They now go straight to the notification daemon over D-Bus
+    (`org.freedesktop.Notifications.Notify` on the session bus, no child
+    process). If the bus can't be reached, `notify-send` says only
+    "Reminder for sticky note #12", never the text.
+  - The hub card's line showed the last-edited note's first line. It now
+    says "last edited 14:05 (#12)"; no note text goes to hub at all.
+  - A chat `hub_todo` passed its title (written by the agent from your
+    notes) to `hub todo add` as an argument. It now goes on stdin with
+    `hub todo add --title-stdin`. A hub without that flag fails with
+    "update hub" rather than falling back to an argument.
+- Reminders no longer put note text in the system notification. The
+  notification server keeps what it shows: Omarchy's writes the summary
+  and body to `~/.local/state/omarchy/notifications/` (and its history),
+  mode 0644, and passes them to `bash -c`, so other accounts could read a
+  reminder's words there or in `ps`. The notification now says only
+  "Sticky note reminder" and "Reminder for sticky note #12" (plus when, if
+  it was missed), on D-Bus, the `notify-send` fallback and
+  `$STICKIES_NOTIFY` alike. The words show on the desktop instead: serve
+  sends the plugin a `reminder` event, and the notes come up above the
+  windows for 15 s with a toast that says the message and a Show button.
+  A click on the system notification shows the note too (new IPC method
+  `showNote <id>`, given to Omarchy as an argv that holds only the id).
+- `stickies search` and `stickies ask` read the query from stdin (no
+  words and stdin isn't a terminal, or `--stdin`), like `add` and
+  `edit`, so scripts and agents can keep note text out of their own
+  arguments too. `ask` now prints its ready-to-run apply lines as
+  `printf '%s' '<json>' | stickies apply` (printf is a shell builtin).
+
 ## 1.3.1 - 2026-10-07
 
 ### Security

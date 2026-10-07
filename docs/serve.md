@@ -26,10 +26,13 @@ gaps and reserved from hyprctl unless given) and `tidy_undo`, `paste`
 (monitor, workspace, x, y: a note from the clipboard; result `{note,
 truncated}`), `reminders`. An unexpected failure answers
 `{"ok": false, "error": "something went wrong (...); details in
-stickies.log"}` and serve carries on. serve also sends due reminders with
-`notify-send` (`STICKIES_NOTIFY` overrides; off while `$STICKIES_STATE` is
-set, like the hub card): once at start for any that came due while it
-wasn't running, then at each reminder's due time. It plans the next
+stickies.log"}` and serve carries on. serve also sends due reminders
+over D-Bus to the notification daemon (no `notify-send`, so the text is in
+no process's arguments; without a bus, `notify-send` says only "Reminder
+for sticky note #N"). `STICKIES_NOTIFY` names a stand-in that gets the
+title and text on stdin; empty turns reminders off, and they are off while
+`$STICKIES_STATE` is set unless it names one, like the hub card. They go
+out once at start for any that came due while serve wasn't running, then at each reminder's due time. It plans the next
 wake-up from the earliest pending reminder (re-planned after every change),
 looking at least every 30 s while one is pending, because the monotonic
 clock stops during suspend. With no reminder pending it doesn't wake for
@@ -81,9 +84,22 @@ Unsolicited lines carry `"event"`:
     {"event": "semantic", "on": true, "loaded": true}    # the embedding model finished loading
     {"event": "settings", "seq": 14, "settings": {"layout": "waterfall-right", ...}}
     {"event": "changed", "seq": 13, "kind": "add|update|archive|restore|purge", "id": 3, "note": {...} | null}
+    {"event": "reminder", "id": 3, "spec": "tomorrow 9:00", "due": "2026-10-08T07:00:00.000Z", "missed": false, "text": "call the plumber"}
 
     {"event": "chat", "chat": "chat-1", "kind": "sent", "sent": [{"id", "color", "title", "body"}, ...]}
     {"event": "chat", "chat": "chat-1", "kind": "delta", "answer": "the visible answer so far"}
+
+A `reminder` event comes when a reminder fires (`missed`: it came due
+more than two minutes before serve got to it, e.g. while serve wasn't
+running). It is the only place the reminder's words go: the plugin shows
+them in a toast on the notes, above the windows, with a Show button that
+raises the note. The system notification serve sends at the same moment
+says only "Reminder for sticky note #3", because the notification server
+keeps what it shows where other accounts can read it (Omarchy's writes
+the summary and body to 0644 files under `~/.local/state/omarchy/` and
+passes them to `bash -c`, so they are in `/proc/<pid>/cmdline` too). Its
+`omarchy-exec-argv` hint is `omarchy-shell stickies showNote 3`: a click
+on it raises the note, with its id and nothing else.
 
 Change events come for writes from this serve process (sent right after the
 response) *and* from any other process, e.g. an agent running `stickies

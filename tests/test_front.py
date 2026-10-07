@@ -122,7 +122,7 @@ class FrontModeQmlTest(unittest.TestCase):
         self.svc = self.src["Service.qml"]
 
     def test_layer_follows_front(self):
-        self.assertRegex(self.svc, r"WlrLayershell\.layer: root\.front \|\| root\.peeking \? WlrLayer\.Top")
+        self.assertRegex(self.svc, r"WlrLayershell\.layer: root\.front \|\| root\.peeking \|\| root\.reminding \? WlrLayer\.Top")
         self.assertIn("WlrLayer.Bottom", self.svc)  # the desktop layer otherwise
 
     def test_focus_grab_ends_front_mode(self):

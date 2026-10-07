@@ -111,7 +111,7 @@ class UndoTest(Base):
         self.assertIn('request("rm", { id: nid }', svc)
         self.assertIn('request("restore", { id: nid }', svc)
         desk = qml_sources()["Desktop.qml"]
-        self.assertIn("interval: 6000", desk)
+        self.assertIn("? 15000 : 6000", desk)
         self.assertIn("desktop.service.undoNotice()", desk)
 
 
@@ -420,11 +420,13 @@ class ReminderStoreTest(Base):
         self.s.db.execute("UPDATE reminders SET due=?", (iso(datetime.now() - timedelta(hours=3)),))
         sent = []
         updated = self.s.get(n["id"])["updated_at"]
-        fired = self.s.fire_reminders(lambda title, text: sent.append((title, text)))
+        fired = self.s.fire_reminders(lambda title, text, public, hints: sent.append((title, text, public)))
         self.assertEqual(self.s.get(n["id"])["updated_at"], updated)  # a reminder is not an edit
-        self.assertEqual([f["note_id"] for f in fired], [n["id"]])
-        self.assertEqual(sent[0][1], "pay Jeroen")
+        self.assertEqual([(f["note_id"], f["text"], f["missed"]) for f in fired], [(n["id"], "pay Jeroen", True)])
+        # the notification names the note, never its words (the desktop shows those)
+        self.assertEqual(sent[0][1:], (f"Reminder for sticky note #{n['id']}",) * 2)
         self.assertIn("missed", sent[0][0])
+        self.assertNotIn("Jeroen", sent[0][0])
         self.assertIsNone(self.s.get(n["id"])["remind_at"])
         self.s.close()
         self.s = stickies.Store()
@@ -439,7 +441,7 @@ class ReminderStoreTest(Base):
         self.assertEqual(self.s.fire_reminders(lambda *a: self.fail("archived")), [])
         self.s.restore(n["id"])
 
-        def boom(*a):
+        def boom(*a, **kw):
             raise RuntimeError("no notification daemon")
         self.assertEqual(len(self.s.fire_reminders(boom)), 1)
         with open(os.path.join(self.state, "stickies.log")) as f:
@@ -447,14 +449,14 @@ class ReminderStoreTest(Base):
 
     def test_notify_send_command(self):
         log = os.path.join(self.state, "notify.log")
-        os.environ["STICKIES_NOTIFY"] = self.script("notify-send", f'printf "%s|" "$@" > "{log}"')
+        os.environ["STICKIES_NOTIFY"] = self.script("notify-send", f'printf "%s|" "$@" > "{log}"; cat >> "{log}"')
         try:
             self.assertTrue(stickies.send_notification("Sticky note reminder", "pay Jeroen"))
         finally:
             del os.environ["STICKIES_NOTIFY"]
-        with open(log) as f:
+        with open(log) as f:  # the stand-in gets the text on stdin, not in argv
             self.assertEqual(f.read(), "--app-name=Stickies|--icon=accessories-text-editor|"
-                                       "Sticky note reminder|pay Jeroen|")
+                                       "Sticky note reminder\npay Jeroen\n")
         self.assertIsNone(stickies.notify_bin())  # a temp STICKIES_STATE never notifies by itself
 
     def test_cli_lists_pending(self):
@@ -476,7 +478,7 @@ class ReminderStoreTest(Base):
             store = stickies.Store()
             try:
                 stickies.serve(store, infd=rfd, out=out, poll=0.05, hub_delay=60, embedder=None,
-                               notify=lambda title, text: sent.append(text), remind_every=0.05)
+                               notify=lambda title, text, **kw: sent.append(text), remind_every=0.05)
             finally:
                 store.close()
 
@@ -486,19 +488,22 @@ class ReminderStoreTest(Base):
             deadline = time.time() + 5
             while not sent and time.time() < deadline:
                 time.sleep(0.02)
-            self.assertEqual(sent, ["pay Jeroen"])  # the missed one, once, at start
+            self.assertEqual(sent, [f"Reminder for sticky note #{n['id']}"])  # the missed one, once, at start
             self.s.db.execute("UPDATE reminders SET due=? WHERE note_id=?",
                               (iso(datetime.now() + timedelta(seconds=0.3)), m["id"]))
             deadline = time.time() + 5
             while len(sent) < 2 and time.time() < deadline:
                 time.sleep(0.02)
-            self.assertEqual(sent, ["pay Jeroen", "later"])
+            self.assertEqual(sent[1:], [f"Reminder for sticky note #{m['id']}"])
         finally:
             os.close(wfd)
             t.join(timeout=5)
             os.close(rfd)
         # the card's bell goes: serve pushed the note without remind_at
         events = [json.loads(l) for l in out.getvalue().splitlines()]
+        # ... and the words go to the plugin, on serve's own stdout
+        self.assertEqual([(e["id"], e["text"], e["missed"]) for e in events if e.get("event") == "reminder"],
+                         [(n["id"], "pay Jeroen", True), (m["id"], "later", False)])
         last = [e for e in events if e.get("event") == "changed" and e["id"] == n["id"]][-1]
         self.assertIsNone(last["note"]["remind_at"])
 

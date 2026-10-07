@@ -16,6 +16,7 @@ else.
     stickies list [--archived | --all] [--workspace N] [--color C] [--pinned] [--tag T ...] [--limit N]
     stickies list --open [--tag T ...]   # open the desktop's All notes view (that filter preselected)
     stickies search cardm fee [--limit 20] [--archived] [--mode fts|semantic|hybrid] [--tag T ...]
+    echo "cardm fee" | stickies search        # no words -> the query from stdin (or --stdin)
     stickies tag 3 work cardmarket       # add tags (a-z, 0-9, -, at most 32 characters; "#Work" is "work")
     stickies untag 3 work
     stickies tags [--archived]           # every tag with its note count, most used first
@@ -38,7 +39,8 @@ else.
     stickies setup --idle-unload MINUTES   # serve frees the model after this long unused (default 10; 0: never)
     stickies backfill          # embed every note whose vector is missing or stale
     stickies ask "what did I write about the Cardmarket fees?" [-k 6] [--notes 3,4] [--exclude 5] [--dry-run]
-    stickies apply '{"action": "new_note", "body": "..."}'   # apply one proposal from `ask` (or on stdin)
+    echo "what about the fees?" | stickies ask   # no words -> the question from stdin (or --stdin)
+    printf '%s' '{"action": "new_note", "body": "..."}' | stickies apply   # one proposal from `ask` (or as an argument)
     stickies integrate [--yes | --no]   # the first-start offer: keys + ~/.local/bin/stickies (no flag: status)
     stickies integrate --yes --install  # what install.sh runs: the keys as a drop-in file, enable the plugin
     stickies integrate --refresh        # restart the shell if the plugin's QML/JS changed since the last install
@@ -67,6 +69,33 @@ notes tagged with it (tags are in the FTS5 index). `list --open` prints
 prints the notes, so scripts and agents are unaffected. `layout` prints the settings (`layout`, `waterfall_width`,
 `waterfall_reserve`, `waterfall_collapsed`, `waterfall_order`,
 `waterfall_free`), the keys they are stored under.
+
+## Note text on stdin, not in arguments
+
+On Linux every account on the machine can read every process's
+arguments (`/proc/<pid>/cmdline`, which is what `ps` shows), but not its
+input. Scripts and agents should pass note text on stdin: `add`, `edit`,
+`search`, `ask` and `apply` read it when given no text and stdin isn't a
+terminal, or with `--stdin`. `printf` and `echo` are shell builtins, so
+`printf '%s' "$text" | stickies add` puts the text in no process's
+arguments.
+
+Stickies itself keeps note text off every command line it runs:
+
+- Reminders are sent to the notification daemon over D-Bus
+  (`org.freedesktop.Notifications.Notify` on the session bus, from
+  `$DBUS_SESSION_BUS_ADDRESS`), with no child process. If the bus can't be
+  reached, `notify-send` shows "Reminder for sticky note #12" and never
+  the text (the reason is logged).
+- The hub card holds counts and a time, never note text; a chat
+  `hub_todo` hands its title to `hub todo add --title-stdin` on stdin.
+- The desktop and `serve` talk over stdin/stdout and `serve.sock`; chat
+  prompts reach the agent on stdin.
+- What does go in arguments: tag names (`list --open --tag` passes them to
+  `omarchy-shell`), note ids, and for `$EDITOR` only the path of a 0600
+  temporary file. When `search` or `ask` re-runs itself under the search
+  venv's Python it keeps its own arguments (the same process, nothing new
+  to see) and hands a query read from stdin over on stdin again.
 
 ## State
 
@@ -115,8 +144,9 @@ nothing happens, and a chat `hub_todo` proposal fails on Apply with "hub
 todo add failed: ... No such file or directory". `hub module set --name
 stickies`: stat
 tiles for live notes, pinned, and last edited (local `HH:MM` today, else the
-ISO date; from `updated_at`, so moving a note counts), plus a text line with
-the last-edited note's first line. Clicking a tile runs
+ISO date; from `updated_at`, so moving a note counts), plus a text line
+`last edited <when> (#id)`. No note text goes to hub: the card travels as
+`hub` arguments, which any account can read. Clicking a tile runs
 `omarchy-shell -q stickies find`, which opens the search overlay.
 
 It is published by `stickies hub`, by `serve` 2 s after the last change

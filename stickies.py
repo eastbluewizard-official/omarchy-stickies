@@ -990,24 +990,226 @@ def reminder_text(body, spec):
 
 
 def notify_bin():
-    """notify-send, or $STICKIES_NOTIFY (empty: off). Off while
+    """$STICKIES_NOTIFY (empty: off; else a stand-in that gets the title
+    and text on stdin), else "dbus": the session bus. Off while
     $STICKIES_STATE points somewhere (tests, benches) unless
     $STICKIES_NOTIFY says otherwise, like hub_bin."""
     if "STICKIES_NOTIFY" in os.environ:
         return os.environ["STICKIES_NOTIFY"] or None
-    return None if os.environ.get("STICKIES_STATE") else "notify-send"
+    return None if os.environ.get("STICKIES_STATE") else "dbus"
 
 
-def send_notification(title, text):
+def send_notification(title, text, public=None, hints=None):
+    """A desktop notification whose text never sits in a process's argv
+    (/proc/<pid>/cmdline is readable by every local user):
+    org.freedesktop.Notifications.Notify straight over the session bus. If
+    the bus can't be reached, notify-send shows `public` instead (None: the
+    title alone), never `text`. Callers never pass note words even here:
+    the notification server keeps what it shows (Omarchy's writes summary
+    and body to world-readable files and a `bash -c` argument). `hints`:
+    string hints, D-Bus path only."""
     import subprocess
     exe = notify_bin()
     if exe is None:
         return False
-    p = subprocess.run([exe, "--app-name=Stickies", "--icon=accessories-text-editor", title, text],
-                       stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=5)
+    if exe == "dbus":
+        try:
+            dbus_notify("Stickies", "accessories-text-editor", title, text, hints=hints)
+            return True
+        except (OSError, ValueError, StickiesError) as e:
+            Store.log_line(f"notification over D-Bus failed ({e}); notify-send without the text")
+        exe = "notify-send"
+        cmd = [exe, "--app-name=Stickies", "--icon=accessories-text-editor", title]
+        p = subprocess.run(cmd + ([public] if public else []), stdin=subprocess.DEVNULL,
+                           capture_output=True, text=True, timeout=5)
+    else:
+        p = subprocess.run([exe, "--app-name=Stickies", "--icon=accessories-text-editor"],
+                           input=f"{title}\n{text}\n", capture_output=True, text=True, timeout=5)
     if p.returncode != 0:
         raise StickiesError((p.stderr or p.stdout).strip() or f"{exe} exited {p.returncode}")
     return True
+
+
+# A minimal D-Bus client, just enough for one method call on the session
+# bus: AUTH EXTERNAL, Hello, the call, its reply. Little-endian, stdlib only.
+
+class _DBusWriter:
+    def __init__(self):
+        self.b = bytearray()
+
+    def align(self, n):
+        self.b += b"\0" * (-len(self.b) % n)
+
+    def byte(self, v):
+        self.b.append(v)
+
+    def u32(self, v, fmt="<I"):
+        import struct
+        self.align(4)
+        self.b += struct.pack(fmt, v)
+
+    def string(self, s):
+        data = s.encode()
+        self.u32(len(data))
+        self.b += data + b"\0"
+
+    def sig(self, s):
+        self.b += bytes([len(s)]) + s.encode() + b"\0"
+
+    def array(self, elem_align, fill):
+        import struct
+        self.u32(0)
+        at = len(self.b) - 4
+        self.align(elem_align)  # the length doesn't count this padding
+        start = len(self.b)
+        fill()
+        self.b[at:at + 4] = struct.pack("<I", len(self.b) - start)
+
+
+def dbus_message(serial, path, iface, member, dest, signature="", body=b""):
+    """A METHOD_CALL. The body is marshalled from offset 0, which is fine:
+    the header is padded to 8, the largest alignment."""
+    w = _DBusWriter()
+    w.b += b"l\x01\x00\x01"  # little-endian, METHOD_CALL, no flags, protocol 1
+    w.u32(len(body))
+    w.u32(serial)
+
+    def fields():
+        for code, typ, val in ((1, "o", path), (2, "s", iface), (3, "s", member),
+                               (6, "s", dest), (8, "g", signature)):
+            if not val:
+                continue
+            w.align(8)
+            w.byte(code)
+            w.sig(typ)
+            w.sig(val) if typ == "g" else w.string(val)
+    w.array(8, fields)
+    w.align(8)
+    return bytes(w.b) + body
+
+
+def dbus_read(sock, buf):
+    """One message off the socket: (type, serial, header fields
+    {code: value}, body, struct byte order). `buf` keeps what was read
+    past it."""
+    import struct
+    def need(n):
+        while len(buf) < n:
+            chunk = sock.recv(65536)
+            if not chunk:
+                raise StickiesError("the session bus closed the connection")
+            buf.extend(chunk)
+    need(16)
+    e = {ord("l"): "<", ord("B"): ">"}.get(buf[0])
+    if e is None:
+        raise StickiesError("not a D-Bus message")
+    body_len, serial, fields_len = struct.unpack(e + "III", bytes(buf[4:16]))
+    head = 16 + fields_len + (-(16 + fields_len) % 8)
+    need(head + body_len)
+    msg = bytes(buf[:head + body_len])
+    del buf[:head + body_len]
+    fields, pos = {}, 16
+    while pos < 16 + fields_len:
+        pos += -pos % 8
+        code, n = msg[pos], msg[pos + 1]
+        typ = msg[pos + 2:pos + 2 + n].decode()
+        pos += 3 + n
+        if typ in ("s", "o"):
+            pos += -pos % 4
+            ln = struct.unpack_from(e + "I", msg, pos)[0]
+            fields[code] = msg[pos + 4:pos + 4 + ln].decode("utf-8", "replace")
+            pos += 5 + ln
+        elif typ == "g":
+            fields[code] = msg[pos + 1:pos + 1 + msg[pos]].decode()
+            pos += 2 + msg[pos]
+        elif typ == "u":
+            pos += -pos % 4
+            fields[code] = struct.unpack_from(e + "I", msg, pos)[0]
+            pos += 4
+        else:
+            raise StickiesError(f"unexpected D-Bus header field type {typ!r}")
+    return msg[1], serial, fields, msg[head:], e
+
+
+def dbus_call(sock, buf, serial, *msg_args):
+    """Send one call and wait for its reply (skipping signals); an ERROR
+    reply raises with its name and message."""
+    import struct
+    sock.sendall(dbus_message(serial, *msg_args))
+    while True:
+        typ, _, fields, body, e = dbus_read(sock, buf)
+        if fields.get(5) != serial or typ not in (2, 3):
+            continue
+        if typ == 3:
+            detail = ""
+            if fields.get(8, "").startswith("s") and len(body) >= 5:
+                detail = ": " + body[4:4 + struct.unpack_from(e + "I", body)[0]].decode("utf-8", "replace")
+            raise StickiesError(f"{fields.get(4, 'D-Bus error')}{detail}")
+        return body, e
+
+
+def session_bus_socket():
+    """The session bus socket address for connect(): unix:path= or
+    unix:abstract= from $DBUS_SESSION_BUS_ADDRESS, else
+    $XDG_RUNTIME_DIR/bus."""
+    addr = os.environ.get("DBUS_SESSION_BUS_ADDRESS", "")
+    for entry in addr.split(";"):
+        if entry.startswith("unix:"):
+            kv = dict(x.split("=", 1) for x in entry[5:].split(",") if "=" in x)
+            if "path" in kv:
+                return kv["path"]
+            if "abstract" in kv:
+                return "\0" + kv["abstract"]
+    if addr:
+        raise StickiesError(f"unsupported session bus address {addr!r}")
+    return os.path.join(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}", "bus")
+
+
+def dbus_notify(app, icon, summary, body, timeout=3.0, hints=None):
+    """org.freedesktop.Notifications.Notify(app, 0, icon, summary, body,
+    [], hints, -1) on the session bus; returns the notification id.
+    hints: {name: str}, each sent as a string variant."""
+    import struct
+    import socket
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.settimeout(timeout)
+    try:
+        sock.connect(session_bus_socket())
+        sock.sendall(b"\0AUTH EXTERNAL " + str(os.getuid()).encode().hex().encode() + b"\r\n")
+        line = b""
+        while not line.endswith(b"\r\n"):
+            chunk = sock.recv(256)
+            if not chunk:
+                raise StickiesError("the session bus closed the connection")
+            line += chunk
+        if not line.startswith(b"OK "):
+            raise StickiesError(f"the session bus refused us: {line.strip().decode(errors='replace')}")
+        sock.sendall(b"BEGIN\r\n")
+        buf = bytearray()
+        dbus_call(sock, buf, 1, "/org/freedesktop/DBus", "org.freedesktop.DBus", "Hello",
+                  "org.freedesktop.DBus")
+        w = _DBusWriter()
+        w.string(app)
+        w.u32(0)  # replaces_id
+        w.string(icon)
+        w.string(summary)
+        w.string(body)
+        w.array(4, lambda: None)  # actions: as
+
+        def put_hints():
+            for k, v in (hints or {}).items():
+                w.align(8)  # each dict entry
+                w.string(k)
+                w.sig("s")
+                w.string(v)
+        w.array(8, put_hints)  # hints: a{sv}
+        w.u32(-1, "<i")  # expire_timeout: the server's default
+        reply, e = dbus_call(sock, buf, 2, "/org/freedesktop/Notifications",
+                             "org.freedesktop.Notifications", "Notify",
+                             "org.freedesktop.Notifications", "susssasa{sv}i", bytes(w.b))
+        return struct.unpack_from(e + "I", reply)[0] if len(reply) >= 4 else None
+    finally:
+        sock.close()
 
 
 # -- clipboard ---------------------------------------------------------------
@@ -1818,8 +2020,13 @@ class Store:
     def fire_reminders(self, notify, now=None):
         """Every pending reminder due by `now` (live notes only): marked
         fired first (a reminder fires once, even if notifying fails), then
-        notify(title, text). Missed ones (serve wasn't running) fire on the
-        first call after start. Returns what fired."""
+        notify(title, body, public=..., hints=...). None of them holds a
+        word of the note: the notification server keeps what it shows where
+        others can read it (Omarchy's: 0644 JSON files and a `bash -c`
+        argument), so it only says that note #N is due, and serve shows the
+        text on the desktop (its "reminder" event). Missed ones (serve
+        wasn't running) fire on the first call after start. Returns what
+        fired, with the text, for that event."""
         now = now or now_iso()
         rows = self.db.execute(
             "SELECT r.note_id, r.spec, r.due, n.body FROM reminders r JOIN notes n ON n.id = r.note_id"
@@ -1836,12 +2043,18 @@ class Store:
             title = "Sticky note reminder"
             if r["due"] < late_before:
                 title += f" (missed, was due {_local_when(r['due'])})"
+            body = f"Reminder for sticky note #{r['note_id']}"
+            # Omarchy's notifications run this argv on a click on the toast:
+            # the note's id, never its words.
+            hints = {"omarchy-exec-argv": json.dumps(
+                ["omarchy-shell", "stickies", "showNote", str(r["note_id"])])}
             try:
-                notify(title, text)
+                notify(title, body, public=body, hints=hints)
                 self.log(f"reminder #{r['note_id']} {r['spec']!r} sent")
             except Exception as e:  # logged, never raised: serve keeps going
                 self.log(f"reminder #{r['note_id']} {r['spec']!r}: notification failed: {e}")
-            out.append({"note_id": r["note_id"], "spec": r["spec"], "due": r["due"], "text": text})
+            out.append({"note_id": r["note_id"], "spec": r["spec"], "due": r["due"],
+                        "missed": r["due"] < late_before, "text": text})
         return out
 
     # -- change feed (serve) -----------------------------------------------
@@ -2534,14 +2747,16 @@ def _local_stamp(iso):
 
 
 def hub_summary(store):
+    """Counts and when, never note text: the card goes to hub in argv,
+    which every local user can read (/proc/<pid>/cmdline)."""
     count, pinned = store.db.execute(
         "SELECT COUNT(*), COALESCE(SUM(pinned), 0) FROM notes WHERE archived_at IS NULL").fetchone()
     last = store.db.execute(
-        "SELECT * FROM notes WHERE archived_at IS NULL ORDER BY updated_at DESC, id DESC LIMIT 1").fetchone()
+        "SELECT id, updated_at FROM notes WHERE archived_at IS NULL"
+        " ORDER BY updated_at DESC, id DESC LIMIT 1").fetchone()
     return {"count": count, "pinned": pinned,
             "last_edited": last["updated_at"] if last else None,
-            "last_edited_id": last["id"] if last else None,
-            "last_edited_title": _first_line(last["body"], 48) if last else None}
+            "last_edited_id": last["id"] if last else None}
 
 
 def hub_args(s):
@@ -2550,7 +2765,7 @@ def hub_args(s):
             "--launch", HUB_LAUNCH,
             "--line", f"{s['count']} note{'' if s['count'] == 1 else 's'}, {s['pinned']} pinned"]
     if when:
-        args += ["--line", f"last edited {when}: {s['last_edited_title'] or '(empty)'}"]
+        args += ["--line", f"last edited {when} (#{s['last_edited_id']})"]
     args += ["--stat", str(s["count"]), "notes", "--stat", str(s["pinned"]), "pinned",
              "--stat", when or "-", "last edited"]
     return args
@@ -2570,7 +2785,7 @@ def publish_hub(store, explicit=False, wait=True):
         if not wait:
             return subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                     stderr=subprocess.DEVNULL, start_new_session=True)
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        p = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10)
     except (OSError, subprocess.TimeoutExpired) as e:
         if wait:
             raise StickiesError(f"hub module set failed: {e}")
@@ -2989,13 +3204,19 @@ def apply_proposal(store, p):
     exe = hub_bin(explicit=True)
     if exe is None:
         raise StickiesError("hub is disabled ($STICKIES_HUB is empty)")
-    cmd = [exe, "todo", "add", p["title"], "--json"]
+    # The title comes from notes: on stdin, never in argv (readable by every
+    # local user). An older hub without --title-stdin is an error to fix,
+    # not a reason to fall back to argv.
+    cmd = [exe, "todo", "add", "--title-stdin", "--json"]
     if p.get("due"):
         cmd += ["--due", p["due"]]
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        r = subprocess.run(cmd, input=p["title"] + "\n", capture_output=True, text=True, timeout=15)
     except (OSError, subprocess.TimeoutExpired) as e:
         raise StickiesError(f"hub todo add failed: {e}")
+    if r.returncode != 0 and ("--title-stdin" in r.stderr + r.stdout or "required: title" in r.stderr):
+        raise StickiesError("hub todo add failed: this hub is too old to take the title on stdin "
+                            "(--title-stdin); update hub")
     if r.returncode != 0:
         raise StickiesError(f"hub todo add failed: {(r.stderr or r.stdout).strip()[-300:]}")
     try:
@@ -3568,9 +3789,14 @@ def serve(store, infd=0, out=None, poll=1.0, hub_delay=2.0, embedder="auto", emb
         if notify is None:
             return
         try:
-            store.fire_reminders(notify)
+            fired = store.fire_reminders(notify)
         except (sqlite3.Error, StickiesError) as e:
             store.log(f"reminders: {e}")
+            return
+        # The text shows on the desktop, not in the system notification.
+        for r in fired:
+            emit({"event": "reminder", "id": r["note_id"], "spec": r["spec"], "due": r["due"],
+                  "missed": r["missed"], "text": r["text"]})
 
     def plan_reminders():
         nonlocal remind_due
@@ -3946,7 +4172,8 @@ def build_parser():
                    help="open the All notes view on the desktop instead (with --tag preselected)")
 
     s = sp("search", "search by words (FTS5) and meaning (local embeddings), fused")
-    s.add_argument("query", nargs="+")
+    s.add_argument("query", nargs="*", help="the words (none: read them from stdin)")
+    s.add_argument("--stdin", action="store_true", help="read the query from stdin")
     s.add_argument("--limit", type=int, default=20)
     s.add_argument("--archived", action="store_true", help="include archived notes")
     s.add_argument("--mode", choices=("fts", "semantic", "hybrid"), default="hybrid",
@@ -3967,7 +4194,8 @@ def build_parser():
     s.add_argument("--archived", action="store_true", help="count archived notes too")
 
     s = sp("ask", "ask your notes (top-k notes + question -> Omarchy's default agent)")
-    s.add_argument("question", nargs="+")
+    s.add_argument("question", nargs="*", help="the question (none: read it from stdin)")
+    s.add_argument("--stdin", action="store_true", help="read the question from stdin")
     s.add_argument("-k", type=int, default=CHAT_K, help=f"notes to send (default {CHAT_K})")
     s.add_argument("--notes", help="send exactly these note ids instead (comma-separated)")
     s.add_argument("--exclude", help="don't send these note ids (comma-separated)")
@@ -4376,8 +4604,10 @@ def run_ask(store, args):
              + ("   cited: " + " ".join(f"#{i}" for i in r["citations"]) if r["citations"] else "")]
     for n, p in enumerate(r["proposals"], 1):
         q = {k: v for k, v in p.items() if k != "summary"}
-        lines.append(f"proposed {n}: {p['summary']}\n  apply: stickies apply "
-                     + shlex.quote(json.dumps(q, ensure_ascii=False)))
+        # printf is a shell builtin: the JSON (note text) reaches apply on
+        # stdin without sitting in any process's argv
+        lines.append(f"proposed {n}: {p['summary']}\n  apply: printf '%s' "
+                     + shlex.quote(json.dumps(q, ensure_ascii=False)) + " | stickies apply")
     for b in r["rejected"]:
         lines.append(f"rejected proposal: {b['error']}")
     return r, "\n".join(lines)
@@ -4406,12 +4636,49 @@ def maybe_reexec(args, argv):
     except StickiesError:
         return
     os.environ["STICKIES_REEXEC"] = "1"
+    text = getattr(args, "stdin_text", None)
+    if text is not None:  # already read: the new image finds it on fd 0 again
+        fd = os.memfd_create("stickies-stdin")
+        os.write(fd, text.encode())
+        os.lseek(fd, 0, os.SEEK_SET)
+        os.dup2(fd, 0)
+        os.close(fd)
     os.execv(py, [py, os.path.realpath(__file__), *argv])
+
+
+def read_query(args):
+    """search/ask: the words, else stdin (--stdin, or no words and stdin
+    isn't a terminal), like add/edit. Stdin keeps note text out of argv,
+    which every local user can read (/proc/<pid>/cmdline). Leaves
+    args.query / args.question as [text], and args.stdin_text for
+    maybe_reexec."""
+    attr = "query" if args.cmd == "search" else "question"
+    words = getattr(args, attr)
+    if words and args.stdin:
+        raise StickiesError(f"give the {attr} as words or on stdin (--stdin), not both")
+    if words:
+        return
+    if not args.stdin and sys.stdin.isatty():
+        raise StickiesError(f"no {attr}: give it as words or on stdin")
+    text = sys.stdin.read().strip()
+    if not text:
+        raise StickiesError(f"no {attr} on stdin")
+    setattr(args, attr, [text])
+    args.stdin_text = text
 
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     args = build_parser().parse_args(argv)
+    if args.cmd in ("search", "ask"):
+        try:
+            read_query(args)
+        except StickiesError as e:
+            if getattr(args, "json", False):
+                print(json.dumps({"error": str(e)}))
+            else:
+                print(f"stickies: {e}", file=sys.stderr)
+            return 1
     if (args.cmd == "search" and args.mode != "fts" and os.environ.get("STICKIES_SEMANTIC") != "0"
             and not os.environ.get("STICKIES_REEXEC")):
         args.served = search_via_serve(" ".join(args.query), args.limit, args.archived, args.mode,

@@ -33,7 +33,8 @@ Item {
   property var desktops: []
 
   // The desktop's one toast, on one screen: { text, screen, undo, nid }.
-  // undo: "" (just words), "archive" (restore nid) or "tidy".
+  // undo: "" (just words), "archive" (restore nid), "tidy" or "reminder"
+  // (its button shows nid).
   property var notice: null
   // A note the UI just created and wants the caret in.
   property int focusRequest: -1
@@ -168,6 +169,9 @@ Item {
   // A short look at the notes above the windows without taking the
   // keyboard: a clipboard note just made, a workspace just tidied.
   property bool peeking: false
+  // A reminder's toast is up: the notes stay above the windows (without
+  // the keyboard) until it goes, so its text is seen.
+  readonly property bool reminding: !!notice && notice.undo === "reminder"
   // Notes glide to their places while a tidy (or its undo) lands.
   property bool arranging: false
   // This session's last tidy can be undone (cleared by the undo or a drag).
@@ -227,6 +231,22 @@ Item {
     if (!n) return
     if (n.undo === "archive") undoArchive(n.nid)
     else if (n.undo === "tidy") undoTidy()
+    else if (n.undo === "reminder") showNote(n.nid)
+  }
+  // A reminder came due. The system notification only says which note
+  // (the notification server keeps what it shows where others can read
+  // it); the words show here, in the toast, above the windows.
+  function showReminder(ev) {
+    hidden = false
+    say((ev.missed ? "Missed reminder: " : "Reminder: ") + (ev.text || "note #" + ev.id), "reminder", ev.id)
+  }
+  // A click on the reminder's toast (ours, or the system one through
+  // `omarchy-shell stickies showNote <id>`): the note, raised and flashed.
+  function showNote(nid) {
+    if (indexOf(nid) < 0) return
+    if (notice && notice.undo === "reminder" && notice.nid === nid) notice = null
+    goTo(nid, true)
+    peek()
   }
 
   function peek() {
@@ -326,6 +346,8 @@ Item {
       applySettings(msg.settings)
     } else if (msg.event === "chat") {
       chatOverlay.onChatEvent(msg)
+    } else if (msg.event === "reminder") {
+      showReminder(msg)
     } else if (msg.id !== undefined) {
       var cb = callbacks[msg.id]
       delete callbacks[msg.id]
@@ -790,6 +812,8 @@ Item {
     function show(): void { root.hidden = false }
     function hide(): void { root.hidden = true; root.leaveFront() }
     function search(): void { root.searchRequested() }
+    // A click on a reminder's system notification (its omarchy-exec-argv).
+    function showNote(id: int): void { root.showNote(id) }
     function find(): void { searchOverlay.toggle() }
     // SUPER + ALT + O (toggles), and `stickies list --open [--tag X]`
     // (listTag: tags separated by spaces or commas).
@@ -905,7 +929,7 @@ Item {
       }
 
       WlrLayershell.namespace: "eastbluewizard-stickies"
-      WlrLayershell.layer: root.front || root.peeking ? WlrLayer.Top
+      WlrLayershell.layer: root.front || root.peeking || root.reminding ? WlrLayer.Top
                            : root.layerName === "overlay" ? WlrLayer.Overlay : WlrLayer.Bottom
       WlrLayershell.keyboardFocus: root.exclusiveFocus ? WlrKeyboardFocus.Exclusive
                                    : root.keyboardReleased ? WlrKeyboardFocus.None : WlrKeyboardFocus.OnDemand

@@ -213,8 +213,9 @@ Item {
   }
 
   // -------------------------------------------------------- toast
-  // "Archived - Undo", "Tidied 6 notes - Undo", or plain words when
-  // something didn't work (never a traceback). Gone after 6 s.
+  // "Archived - Undo", "Tidied 6 notes - Undo", "Reminder: ... - Show",
+  // or plain words when something didn't work (never a traceback). Gone
+  // after 6 s (a reminder: 15 s).
   Rectangle {
     id: toast
     visible: desktop.toastHere
@@ -244,7 +245,7 @@ Item {
       Text {
         anchors.verticalCenter: parent.verticalCenter
         visible: !!desktop.service.notice && desktop.service.notice.undo !== ""
-        text: "Undo"
+        text: desktop.service.notice && desktop.service.notice.undo === "reminder" ? "Show" : "Undo"
         color: Color.accent
         font.family: Style.font.family
         font.pixelSize: 13
@@ -264,7 +265,7 @@ Item {
     Timer {
       id: toastTimer
       running: toast.visible
-      interval: 6000
+      interval: desktop.service.reminding ? 15000 : 6000
       onTriggered: desktop.service.notice = null
     }
     Connections {

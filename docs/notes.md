@@ -28,9 +28,15 @@ the [README](../README.md#keys); the desktop plugin in detail is in
   note (trimmed, at most 10,000 characters). An image or an empty
   clipboard says so instead.
 - **Reminders.** A line like `@ 2026-10-07 09:00`, `@tomorrow 9:00`
-  (`@morgen`, `@today`, `@vandaag` too) or `@ 17:30 call the plumber` sends a
-  desktop notification at that time; the note shows a bell with the time.
-  The rest of the line is the message. A relative day counts from when you
+  (`@morgen`, `@today`, `@vandaag` too) or `@ 17:30 call the plumber` rings
+  at that time; the note shows a bell with the time. The rest of the line
+  is the message. It shows on the desktop: the notes come up above the
+  windows for 15 s with a toast that says the message and a Show button
+  that raises the note. The system notification only says that a note is
+  due ("Reminder for sticky note #12"; a click on it shows the note too),
+  never what it says: notification servers keep what they show, and
+  Omarchy's writes it to files other accounts on the machine can read.
+  A relative day counts from when you
   wrote it; a date already past when written never rings. The desktop
   plugin's `stickies serve` sends them (no extra daemon); one that came due
   while it wasn't running is sent once when it starts. `stickies

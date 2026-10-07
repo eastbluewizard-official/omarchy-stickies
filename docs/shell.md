@@ -474,7 +474,8 @@ node). Note text and proposal summaries are plain text.
   (show/hide), `show`, `hide`, `find` (the search overlay; the hub card's launch command),
   `chat` (the chat overlay), `cycleLayout`, `collapse`, `layout <name>`,
   `search` (opens the bar panel on the focused monitor with the search field
-  focused), `reload` (re-lists).
+  focused), `reload` (re-lists), `showNote <id>` (raises and flashes that
+  note above the windows; a click on a reminder's system notification runs it).
 - **Input only where notes are.** The surface's input mask is the union of
   the shown notes, the `+` button and the toasts; clicks anywhere else reach
   the desktop (and the background plugin).

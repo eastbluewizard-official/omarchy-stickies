@@ -60,7 +60,16 @@ class HubTest(TempState):
         s = stickies.hub_summary(store)
         store.close()
         self.assertEqual((s["count"], s["pinned"], s["last_edited_id"]), (2, 1, a["id"]))
-        self.assertEqual(s["last_edited_title"], "Cardmarket fees went up again")
+        self.assertNotIn("Cardmarket", json.dumps(s))  # counts and when, no note text
+
+    def test_card_holds_no_note_text(self):
+        store = stickies.Store()
+        n = store.add("Cardmarket fees went up")
+        args = stickies.hub_args(stickies.hub_summary(store))
+        store.close()
+        self.assertNotIn("Cardmarket", " ".join(args))
+        self.assertRegex(args[args.index("--line", args.index("--line") + 1) + 1],
+                         rf"^last edited \d\d:\d\d \(#{n['id']}\)$")
 
     def test_card_shape(self):
         store = stickies.Store()

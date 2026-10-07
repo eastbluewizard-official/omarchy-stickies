@@ -69,8 +69,9 @@ class ChatBase(TempState):
         self.hub = os.path.join(self.state, "fake-hub")
         with open(self.hub, "w") as f:
             f.write(f"#!{sys.executable}\nimport json, sys\n"
+                    "title = sys.stdin.read() if '--title-stdin' in sys.argv else None\n"
                     f"open({self.hublog!r}, 'a').write(json.dumps(sys.argv[1:]) + '\\n')\n"
-                    "print(json.dumps({'id': 7, 'title': sys.argv[3]}))\n")
+                    "print(json.dumps({'id': 7, 'title': title}))\n")
         os.chmod(self.hub, 0o755)
         self.env = {"STICKIES_AGENT": self.agent, "FAKE_LOG": self.log, "FAKE_ANSWER": self.answer,
                     "STICKIES_HUB": self.hub, "STICKIES_SEMANTIC": "0"}
@@ -320,9 +321,10 @@ class ConfirmTest(ChatBase):
         ok, _ = stickies.parse_proposals(ANSWER, [self.fees, self.payout])
         todo, note, append = ok
         r = stickies.apply_proposal(self.s, todo)
-        self.assertEqual(self.hub_calls(), [["todo", "add", "Raise Cardmarket prices 5%", "--json",
+        # the title (agent text from notes) goes on stdin, never in argv
+        self.assertEqual(self.hub_calls(), [["todo", "add", "--title-stdin", "--json",
                                              "--due", "2026-10-12"]])
-        self.assertEqual(r["todo"]["id"], 7)
+        self.assertEqual(r["todo"], {"id": 7, "title": "Raise Cardmarket prices 5%\n"})
         n = stickies.apply_proposal(self.s, note)["note"]
         self.assertEqual((n["body"], n["color"]), ("Fees: 5% now", "pink"))
         n = stickies.apply_proposal(self.s, append)["note"]
@@ -358,7 +360,7 @@ class CliTest(ChatBase):
         self.assertTrue(p.stdout.startswith("Cardmarket now takes 5% commission"))
         self.assertNotIn("```", p.stdout)
         self.assertIn(f"sent: #{self.fees} #{self.payout}   cited: #{self.fees} #{self.payout}", p.stdout)
-        self.assertIn("apply: stickies apply '{\"action\": \"hub_todo\"", p.stdout)
+        self.assertIn("apply: printf '%s' '{\"action\": \"hub_todo\"", p.stdout)
         self.assertIn("rejected proposal: unknown action 'delete_note'", p.stdout)
 
     def test_dry_run_calls_nothing(self):

@@ -52,16 +52,19 @@ one-line title, `append_note` only to a note that was sent, at most 5).
 Anything else (a delete, an archive, malformed JSON, ...) lands in
 `rejected` with the reason and is never offered. `ask` applies nothing; it
 returns `proposals` (each with a `summary`) for a person to confirm. `apply`
-(the overlay's Apply button, or `stickies apply '<json>'`) validates again
+(the overlay's Apply button, or the JSON piped to `stickies apply`) validates again
 and applies one: `new_note` -> `stickies add`, `append_note` -> `edit
---append` (live notes only), `hub_todo` -> `hub todo add TITLE [--due D]
---json`. Chat never deletes or archives.
+--append` (live notes only), `hub_todo` -> `hub todo add --title-stdin
+[--due D] --json` with the title on stdin (arguments are visible to every
+account on the machine; a hub without `--title-stdin` fails with "update
+hub", never falling back to an argument). Chat never deletes or archives.
 
 `stickies ask --json` result: `question`, `sent`, `prompt`, `answer` (the
 visible answer), `raw` (everything the model wrote), `citations`,
 `unknown_citations`, `proposals`, `rejected`, `ms`. Without `--json` the
 answer streams to the terminal, followed by what was sent and cited and a
-ready-to-run `stickies apply ...` line per proposal. Agent failures are
+ready-to-run `printf '%s' '<json>' | stickies apply` line per proposal
+(`printf` is a shell builtin, so the JSON is in no process's arguments). Agent failures are
 `{"error": ...}` with exit 1.
 
 Measured with a fake agent and the real `claude -p`, 2,003 notes:

@@ -247,7 +247,7 @@ class ServeNoPollTest(TempState):
             store = stickies.Store()
             try:
                 stickies.serve(store, infd=rfd, out=Out(), poll=3600, hub_delay=3600, embedder=None,
-                               notify=lambda title, text: sent.append((time.monotonic(), text)),
+                               notify=lambda title, text, **kw: sent.append((time.monotonic(), text)),
                                remind_every=3600)
             finally:
                 store.close()
@@ -258,7 +258,7 @@ class ServeNoPollTest(TempState):
         try:
             while not sent and time.monotonic() - start < 5:
                 time.sleep(0.02)
-            self.assertEqual([x for _, x in sent], ["leave"])
+            self.assertEqual([x for _, x in sent], ["Reminder for sticky note #1"])
             self.assertLess(sent[0][0] - start, 2.0)
         finally:
             os.close(wfd)

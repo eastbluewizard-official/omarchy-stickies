@@ -21,7 +21,7 @@ class LoadedCodeTest(TempState):
         self.sent = os.path.join(self.tmp, "sent.log")
         notify = os.path.join(self.tmp, "notify-send")
         with open(notify, "w") as f:
-            f.write(f'#!/bin/sh\necho "$*" >> "{self.sent}"\n')
+            f.write(f'#!/bin/sh\ntr "\\n" " " >> "{self.sent}"; echo >> "{self.sent}"\n')
         os.chmod(notify, 0o755)
         self.plugin = plugin_copy(os.path.join(self.tmp, "plugin"))
         self._old_env = {k: os.environ.get(k) for k in ("STICKIES_NOTIFY", "STICKIES_SHELL_ID")}

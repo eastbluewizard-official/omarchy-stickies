@@ -3,7 +3,7 @@
 Sticky notes that live on your Omarchy desktop, find any note by its words
 or its meaning offline, and let you ask questions about them.
 
-[![version](https://img.shields.io/badge/version-1.3.1-informational)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-1.3.2-informational)](CHANGELOG.md)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Omarchy plugin](https://img.shields.io/badge/Omarchy-plugin-555)](https://omarchy.org)
 
@@ -41,8 +41,9 @@ or its meaning offline, and let you ask questions about them.
   workspace in one list, filtered by tag and by text as you type.
 - Checklists: `- [ ]` lines become checkboxes, and the header counts what is
   done.
-- Reminders: a line like `@ tomorrow 9:00 call the plumber` sends a desktop
-  notification at that time.
+- Reminders: a line like `@ tomorrow 9:00 call the plumber` brings that
+  note's message up on the desktop at that time, with a notification
+  that a note is due.
 - Roll a note up to its first line, archive it with undo, tidy a workspace's
   notes into a grid, and snap notes to each other while dragging.
 - Quick capture: `SUPER + ALT + V` turns the clipboard's text into a note.
@@ -229,7 +230,13 @@ things set-up adds (the keys file and `~/.local/bin/stickies`).
 **Your notes are yours alone.** The state folder is kept 0700 and every
 file in it (the database, its `-wal` and `-shm`, the log) 0600, whatever
 your umask, so other accounts on the machine cannot read them. Older
-installs are fixed the first time 1.3.1 runs.
+installs are fixed the first time 1.3.1 runs. Note text also stays off
+command lines, which every account can read with `ps`, and out of system
+notifications: the notification server keeps what it shows (Omarchy's
+writes it to files every account can read). So a reminder's words show
+on the desktop, in Stickies' own toast, and the system notification only
+says that a note is due ("Reminder for sticky note #12"). The optional
+`hub` card shows counts, never what a note says.
 
 More detail: [docs/search.md](docs/search.md) (including how the model was
 chosen) and [docs/chat.md](docs/chat.md).
@@ -255,6 +262,12 @@ and a failure is `{"error": "..."}` with exit code 1:
     $ stickies search plumber --json
     [{"id": 3, "body": "Call the plumber", "color": "pink", "pinned": false, ...,
       "snippet": "Call the plumber", "highlights": [[9, 16]], "match": "fts", ...}]
+
+Pass note text on stdin rather than as arguments: other accounts on the
+machine can see a command's arguments (`ps`), not its input. `add`,
+`edit`, `search`, `ask` and `apply` all read stdin when given no text:
+
+    printf '%s' "when is the plumber coming?" | stickies ask --json
 
 The full reference is in [docs/cli.md](docs/cli.md). The desktop plugin
 talks to a long-running `stickies serve`, documented in

@@ -63,7 +63,8 @@ Panel {
     service.search(q, function(result) {
       if (searchField.text.trim() !== q) return  // a newer query is on its way
       searchedFor = q
-      hits = result.map(h => ({ nid: h.id, body: h.snippet || h.body, color: h.color, pinned: h.pinned,
+      // A snippet is plain words already (serve strips the markup).
+      hits = result.map(h => ({ nid: h.id, body: h.snippet || h.body, plain: !!h.snippet, color: h.color, pinned: h.pinned,
                                 workspace: h.workspace === null ? -1 : h.workspace }))
     })
   }

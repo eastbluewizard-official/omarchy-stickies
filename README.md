@@ -3,7 +3,7 @@
 Sticky notes that live on your Omarchy desktop, find any note by its words
 or its meaning offline, and let you ask questions about them.
 
-[![version](https://img.shields.io/badge/version-1.3.2-informational)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-1.4.0-informational)](CHANGELOG.md)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Omarchy plugin](https://img.shields.io/badge/Omarchy-plugin-555)](https://omarchy.org)
 
@@ -41,6 +41,10 @@ or its meaning offline, and let you ask questions about them.
   workspace in one list, filtered by tag and by text as you type.
 - Checklists: `- [ ]` lines become checkboxes, and the header counts what is
   done.
+- [Markup](docs/notes.md#markup) as you type: `**bold**`, `*italic*`,
+  `__underline__`, `~~strike~~`, `==highlight==`, `` `code` ``, headings,
+  bullets and numbered lists. The markers stay faint while you edit and
+  hide when you're done; the note itself stays plain text.
 - Reminders: a line like `@ tomorrow 9:00 call the plumber` brings that
   note's message up on the desktop at that time, with a notification
   that a note is due.
@@ -130,6 +134,19 @@ Check which version is installed:
 | `SUPER + ALT + A` | Ask your notes |
 | `SUPER + ALT + L` | Layout: free, waterfall right, waterfall left |
 | `SUPER + ALT + W` | Fold the waterfall column to a thin strip, or bring it back |
+
+In a note you are typing in:
+
+| Key | Does |
+|---|---|
+| `Ctrl + B` / `Ctrl + I` / `Ctrl + U` | Bold, italic, underline the selection (again: undo it) |
+| `Ctrl + Shift + X` / `Ctrl + Shift + H` | Strike through, highlight |
+| `Ctrl + E` | Code |
+| `Ctrl + L` | A checkbox on this line, or off again |
+| `Ctrl + Z` / `Ctrl + Shift + Z` | Undo, redo (`Ctrl + Y` redoes too) |
+| `Esc` | Done with the note (in front mode: back to the desktop) |
+
+Without a selection, the markup keys put an empty pair around the caret.
 
 On the desktop, drag a note by its header and resize it from the
 bottom-right corner. The header buttons tag, pin, recolour and archive.

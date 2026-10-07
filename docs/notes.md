@@ -1,4 +1,4 @@
-# Notes: checklists, reminders, roll-up, tidy
+# Notes: markup, checklists, reminders, roll-up, tidy
 
 What a note can do besides holding text. Keys and the desktop basics are in
 the [README](../README.md#keys); the desktop plugin in detail is in
@@ -44,3 +44,57 @@ the [README](../README.md#keys); the desktop plugin in detail is in
 - **Plain words.** Problems show as a sentence (a toast on the desktop,
   `stickies: ...` in the terminal); the details of anything unexpected go
   to `~/.local/state/stickies/stickies.log`, never a traceback on screen.
+
+## Markup
+
+![four notes with headings, bullets, a checklist, bold, italic, highlighted and code words, on a dark theme](markup.png)
+
+A note can carry a little Markdown-style markup, styled as you type.
+While you edit a note the markers stay where you typed them, faint; when
+the note loses focus they hide and only the styled words show. The note
+itself stays plain text with the markers in it, so the CLI, `--json`,
+scripts, agents and chat see exactly what you typed.
+
+| You type | You see |
+|---|---|
+| `**bold**` | **bold** |
+| `*italic*` | *italic* |
+| `__underline__` | underlined (Markdown has no underline: here `__` means it) |
+| `~~strike~~` | ~~struck through~~ |
+| `==highlight==` | a marker-pen background in your theme's accent colour |
+| `` `code` `` | monospace on a faint background |
+| `# Heading` / `## Heading` | a bigger, bold line (`###` stays as typed) |
+| `- item` / `* item` | a bullet; wrapped lines line up under the text |
+| `1. item` / `1) item` | a numbered item, wrapped the same way |
+| `- [ ] item` | a checkbox (see Checklists above); it takes markup too |
+| `\*` | a literal `*` (a backslash before any punctuation mark) |
+
+The rules, so nothing surprises you:
+
+- Markers pair on the same line. A lone `*` or `**` stays as typed, and so
+  does a pair with a space just inside it: `2 * 3 * 4` and `** a **` are
+  plain text.
+- What a pair holds must be more than the marker's own character:
+  `****` is four stars.
+- Inside `` `code` `` nothing else is parsed: `` `**x**` `` shows the stars.
+- Pairs nest: `**bold *and italic***`.
+- A single `_` is never markup, so `snake_case` is safe; `__init__` does
+  underline (write `` `__init__` `` to keep it).
+
+**Keys** in a note: `Ctrl + B` bold, `Ctrl + I` italic, `Ctrl + U`
+underline, `Ctrl + Shift + X` strike, `Ctrl + Shift + H` highlight,
+`Ctrl + E` code. Each wraps the selection, or unwraps it if it is wrapped
+already; without a selection it puts an empty pair around the caret.
+`Ctrl + L` puts a `[ ] ` checkbox on the line, or takes it off.
+`Ctrl + Z` / `Ctrl + Shift + Z` (or `Ctrl + Y`) undo and redo, a word at a
+time; one of the keys above or a checkbox click is one step.
+
+**Elsewhere the words are plain.** A rolled-up note's title, All notes,
+the bar widget, search results and reminder messages show the words
+without markers, and search finds `**milk**` when you type "milk".
+Search by meaning reads the words without markers too (notes written
+before this version are read again once, by themselves).
+
+Typing stays quick in a long note: in a 2,000-character note full of
+markup on an i7-8550U, a real keystroke reached the screen in 5.9 ms
+(median), 12.4 ms at the 95th percentile.

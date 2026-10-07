@@ -25,7 +25,7 @@ def node_lib(name):
         with open(os.path.join(SHELL, n)) as f:
             return "\n".join(l for l in f.read().splitlines() if not l.startswith((".pragma", ".import")))
     return ("var Markup = (function() {\n" + read("markup.js")
-            + "\nreturn { escapeHtml: escapeHtml, safeColor: safeColor } })();\n" + read(name))
+            + "\nreturn { escapeHtml: escapeHtml, safeColor: safeColor, plainLine: plainLine } })();\n" + read(name))
 
 
 def qml_sources():

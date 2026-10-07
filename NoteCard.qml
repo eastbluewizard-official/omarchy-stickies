@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import qs.Commons
+import "markup.js" as Markup
 
 // One sticky. Position and size bind to the model except while a drag or
 // resize is in flight, when they follow the pointer locally (no round trip
@@ -37,6 +38,9 @@ Item {
   property var service
   property var desk
   readonly property alias editor: editor
+  // The note's text as typed (`styler.plain`, markers and all) and its
+  // live styling.
+  readonly property alias styler: styler
   property bool docked: false
   // Animate position changes (the column's layout switch / reorder glide).
   property bool glide: false
@@ -79,6 +83,23 @@ Item {
   readonly property color fill: service.fillFor(color)
   readonly property color ink: service.ink
   readonly property color rule: Qt.rgba(ink.r, ink.g, ink.b, 0.10)
+  // ==highlight==: the theme's accent as a marker pen over the note colour.
+  readonly property color markColor: Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, service.dark ? 0.45 : 0.38)
+
+  // Markers show faint while the note is being edited, hidden otherwise.
+  MarkupStyler {
+    id: styler
+    editor: editor
+    flick: flick
+    ink: card.ink
+    hidden: !editor.activeFocus
+    // Typing, undo, a shortcut or a new body from outside: recount the
+    // checkboxes; save unless it is what was last sent or received.
+    onPlainChanged: {
+      card.scanChecks()
+      if (plain !== card.sentBody) saveTimer.restart()
+    }
+  }
 
   // ------------------------------------------------------------ geometry API
   // Used by the pointer handlers below and by the frame-time bench.
@@ -233,19 +254,20 @@ Item {
   // ------------------------------------------------------------ body sync
   function flush() {
     saveTimer.stop()
-    if (editor.text !== sentBody) {
-      sentBody = editor.text
-      service.editBody(nid, editor.text)
+    if (styler.plain !== sentBody) {
+      sentBody = styler.plain
+      service.editBody(nid, styler.plain)
     }
   }
 
   // An external change (CLI, agent) lands in the editor unless the person
   // is mid-edit here; then their text wins and is flushed on blur.
   onBodyChanged: {
-    if (body === editor.text) { sentBody = body; return }
+    if (body === styler.plain) { sentBody = body; return }
     if (!editor.activeFocus && !saveTimer.running) {
       sentBody = body
-      editor.text = body
+      styler.setText(body)
+      styler.reset()
     }
   }
 
@@ -265,7 +287,7 @@ Item {
   property int layoutRev: 0        // bumped when wrapping may have moved lines
 
   function scanChecks() {
-    var t = editor.text
+    var t = styler.plain
     var out = []
     if (t.indexOf("[") >= 0) {
       var re = /^([ \t]*(?:[-*+][ \t]+)?)\[([ xX])\]/gm
@@ -275,23 +297,68 @@ Item {
     if (out.length === checks.length && out.every((c, i) => c.pos === checks[i].pos && c.done === checks[i].done)) return
     checks = out
     checkDone = out.filter(c => c.done).length
+    // The overlays follow in place: a key typed above them moves them,
+    // it doesn't make new ones.
+    for (var i = 0; i < out.length; i++) {
+      if (i >= checkModel.count) checkModel.append(out[i])
+      else if (checkModel.get(i).pos !== out[i].pos || checkModel.get(i).done !== out[i].done) checkModel.set(i, out[i])
+    }
+    if (checkModel.count > out.length) checkModel.remove(out.length, checkModel.count - out.length)
+  }
+  ListModel { id: checkModel }
+
+  // Where a checkbox goes (not while the styler rebuilds the document,
+  // which is empty for that moment).
+  function boxRect(pos) {
+    return !styler.busy && pos <= editor.length ? editor.positionToRectangle(pos) : Qt.rect(0, 0, 0, 0)
   }
 
+  // The flip goes through the styler: one undo step, the caret kept.
   function toggleCheck(pos) {
-    var mark = editor.text.charAt(pos + 1) === " " ? "x" : " "
-    editor.remove(pos + 1, pos + 2)
-    editor.insert(pos + 1, mark)
+    var t = styler.plain
+    var mark = t.charAt(pos + 1) === " " ? "x" : " "
+    styler.replace(t.slice(0, pos + 1) + mark + t.slice(pos + 2), styler.anchorPos(), editor.cursorPosition)
     flush()
   }
 
-  // Rolled-up title: the first line with text, without a checkbox.
+  // Rolled-up title: the first line with text, without a checkbox, in
+  // plain words (no markup).
   readonly property string title: {
     var lines = body.split("\n")
     for (var i = 0; i < lines.length; i++) {
-      var l = lines[i].replace(/^[ \t]*(?:[-*+][ \t]+)?\[[ xX]\][ \t]*/, "").trim()
+      var l = Markup.plainLine(lines[i].replace(/^[ \t]*(?:[-*+][ \t]+)?\[[ xX]\][ \t]*/, "")).trim()
       if (l) return l
     }
     return "(empty note)"
+  }
+
+  // ------------------------------------------------------------ markup keys
+  // Ctrl+B / I / U, Ctrl+Shift+X / H and Ctrl+E wrap the selection in a
+  // marker (or unwrap it), Ctrl+L puts a checkbox on the line (or takes it
+  // off). Ctrl+Z and Ctrl+Shift+Z / Ctrl+Y use the styler's history: the
+  // TextEdit's own would replay the styling too.
+  readonly property var wrapKeys: ({ [Qt.Key_B]: "**", [Qt.Key_I]: "*", [Qt.Key_U]: "__", [Qt.Key_E]: "`" })
+  readonly property var wrapShiftKeys: ({ [Qt.Key_X]: "~~", [Qt.Key_H]: "==" })
+  function markupKey(event) {
+    var mods = event.modifiers & (Qt.ControlModifier | Qt.ShiftModifier | Qt.AltModifier | Qt.MetaModifier)
+    if (editor.inputMethodComposing || !(mods & Qt.ControlModifier) || (mods & (Qt.AltModifier | Qt.MetaModifier)))
+      return false
+    var shift = (mods & Qt.ShiftModifier) !== 0
+    var k = event.key
+    if (k === Qt.Key_Z && !shift) { styler.undo(); return true }
+    if ((k === Qt.Key_Z && shift) || (k === Qt.Key_Y && !shift)) { styler.redo(); return true }
+    var m = (shift ? wrapShiftKeys : wrapKeys)[k]
+    if (m) {
+      var r = Markup.toggleWrap(styler.plain, editor.selectionStart, editor.selectionEnd, m)
+      styler.replace(r.text, r.a, r.b)
+      return true
+    }
+    if (k === Qt.Key_L && !shift) {
+      var c = Markup.toggleCheckbox(styler.plain, editor.cursorPosition)
+      styler.replace(c.text, c.pos, c.pos)
+      return true
+    }
+    return false
   }
 
   // Reminder time for the bell: "09:00" today, "Tue 09:00" this week,
@@ -332,7 +399,7 @@ Item {
 
   Component.onCompleted: {
     sentBody = body
-    editor.text = body
+    styler.setText(body)
     desk.addRegion(region)
     if (service.focusRequest === nid && visible) {
       service.focusRequest = -1
@@ -345,7 +412,7 @@ Item {
     }
   }
   Component.onDestruction: {
-    if (editor.text !== sentBody) flush()
+    if (styler.plain !== sentBody) flush()
     if (discardTimer.running && isEmpty()) service.discardIfEmpty(nid)
     desk.removeRegion(region)
   }
@@ -353,7 +420,7 @@ Item {
   // A note left empty goes when it loses focus. Checked a moment later, so
   // focus that only blinks away (the surface remapping as front mode
   // starts, a hop between monitors) doesn't count.
-  function isEmpty() { return editor.text.trim() === "" && tags === "" }
+  function isEmpty() { return styler.plain.trim() === "" && tags === "" }
   Timer {
     id: discardTimer
     interval: 400
@@ -706,6 +773,38 @@ Item {
       else if (contentY + height <= r.y + r.height) contentY = r.y + r.height - height
     }
 
+    // Under the text: ==highlight== and `code` backgrounds, and the dots
+    // drawn for "- " bullets while the markers are hidden.
+    Repeater {
+      model: styler.decoModel
+      Rectangle {
+        required property real dx
+        required property real dy
+        required property real dw
+        required property real dh
+        required property bool code
+        x: dx
+        y: dy + 1
+        width: dw
+        height: dh - 2
+        radius: code ? 3 : 2
+        color: code ? Qt.rgba(card.ink.r, card.ink.g, card.ink.b, card.service.dark ? 0.14 : 0.09) : card.markColor
+      }
+    }
+    Repeater {
+      model: styler.dotModel
+      Rectangle {
+        required property real dx
+        required property real dy
+        required property real dw
+        required property real dh
+        width: 5; height: 5; radius: 2.5
+        x: dx + Math.round((dw - width) / 2)
+        y: dy + Math.round((dh - height) / 2)
+        color: Qt.rgba(card.ink.r, card.ink.g, card.ink.b, 0.75)
+      }
+    }
+
     TextEdit {
       id: editor
       width: flick.width
@@ -718,13 +817,18 @@ Item {
       persistentSelection: false
       font.family: Style.font.family
       font.pixelSize: 14
-      textFormat: TextEdit.PlainText
+      // Rich text only for the look: the document holds the note's plain
+      // text (MarkupStyler); `text` would be HTML, so read styler.plain.
+      textFormat: TextEdit.RichText
 
-      onTextChanged: {
-        card.scanChecks()
-        if (text !== card.sentBody) saveTimer.restart()
+      // The styler's own formatting changes `text` too (busy then).
+      onTextChanged: if (!styler.busy) styler.edited()
+      onInputMethodComposingChanged: if (!inputMethodComposing) styler.edited()
+      Keys.onPressed: event => { if (card.markupKey(event)) event.accepted = true }
+      onWidthChanged: {
+        if (card.checks.length) card.layoutRev++
+        styler.remeasure()  // rewrapped: backgrounds and dots move
       }
-      onWidthChanged: if (card.checks.length) card.layoutRev++
       onContentHeightChanged: if (card.checks.length) card.layoutRev++
       onActiveFocusChanged: {
         if (activeFocus) {
@@ -754,12 +858,13 @@ Item {
 
       // Checkboxes over the "[ ]" / "[x]" of each checklist line.
       Repeater {
-        model: card.checks
+        model: checkModel
         Item {
           id: check
-          required property var modelData
-          readonly property rect at: { card.layoutRev; return editor.positionToRectangle(modelData.pos) }
-          readonly property rect end: { card.layoutRev; return editor.positionToRectangle(modelData.pos + 3) }
+          required property int pos
+          required property bool done
+          readonly property rect at: { card.layoutRev; styler.rev; return card.boxRect(pos) }
+          readonly property rect end: { card.layoutRev; styler.rev; return card.boxRect(pos + 3) }
           x: at.x
           y: at.y
           width: Math.max(end.y === at.y ? end.x - at.x : 0, 16)
@@ -773,12 +878,12 @@ Item {
             id: box
             anchors.centerIn: parent
             width: 13; height: 13; radius: 3
-            color: check.modelData.done ? Qt.rgba(card.ink.r, card.ink.g, card.ink.b, 0.75) : "transparent"
+            color: check.done ? Qt.rgba(card.ink.r, card.ink.g, card.ink.b, 0.75) : "transparent"
             border.width: 1.5
             border.color: Qt.rgba(card.ink.r, card.ink.g, card.ink.b, boxMouse.containsMouse ? 0.9 : 0.6)
             Text {
               anchors.centerIn: parent
-              visible: check.modelData.done
+              visible: check.done
               text: "✓"
               color: card.fill
               font.pixelSize: 11
@@ -791,7 +896,7 @@ Item {
             anchors.margins: -2
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: card.toggleCheck(check.modelData.pos)
+            onClicked: card.toggleCheck(check.pos)
           }
         }
       }

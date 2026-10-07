@@ -26,11 +26,14 @@ function noteFromLink(link) {
   return m ? parseInt(m[1], 10) : -1
 }
 
-// First non-empty line, cut to n characters.
+// First non-empty line in plain words (no markup), cut to n characters.
 function title(body, n) {
   var lines = String(body || "").split(/\r?\n/)
   var t = ""
-  for (var i = 0; i < lines.length; i++) if (lines[i].trim()) { t = lines[i].trim(); break }
+  for (var i = 0; i < lines.length; i++) {
+    var l = Markup.plainLine(lines[i]).trim()
+    if (l) { t = l; break }
+  }
   n = n || 60
   return t.length <= n ? t : t.slice(0, n - 1) + "…"
 }

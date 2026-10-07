@@ -58,8 +58,8 @@ class ChecklistTest(unittest.TestCase):
 
     def test_toggle_edits_the_text_and_saves(self):
         fn = re.search(r"function toggleCheck\(pos\) \{(.*?)\n  \}", self.card, re.S).group(1)
-        self.assertIn("editor.remove(pos + 1, pos + 2)", fn)
-        self.assertIn("editor.insert(pos + 1, mark)", fn)
+        # Through the styler (one undo step, caret kept), then saved at once.
+        self.assertIn("styler.replace(t.slice(0, pos + 1) + mark + t.slice(pos + 2)", fn)
         self.assertIn("flush()", fn)
         self.assertIn('card.checkDone + "/" + card.checks.length', self.card)
 

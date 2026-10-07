@@ -174,6 +174,7 @@ ShellRoot {
   property var keyTimes: []
   property var keyLat: []
   property real pendingKey: -1
+  property real changeAt: -1
 
   Timer {
     id: typeStart
@@ -209,9 +210,19 @@ ShellRoot {
         wtype.running = false
       }
     }
-    function onTextChanged() {
-      if (!wtype.running) return
-      harness.pendingKey = clock.elapsed()
+  }
+  // A keystroke counts from the moment the editor's text changed (the
+  // styler's `changing`, before it reads and styles the line); its own
+  // formatting changes `text` too, so textChanged would count those.
+  Connections {
+    target: harness.card ? harness.card.styler : null
+    function onChanging() {
+      if (wtype.running) harness.changeAt = clock.elapsed()
+    }
+    function onPlainChanged() {
+      if (!wtype.running || harness.changeAt < 0) return
+      harness.pendingKey = harness.changeAt
+      harness.changeAt = -1
       harness.keyTimes.push(harness.pendingKey)
     }
   }
@@ -244,7 +255,7 @@ ShellRoot {
                                 wtype_exit: wtype.code, wtype_stderr: wtypeErr.text,
                                 focus_at_end: harness.card.editor.activeFocus,
                                 window_active_at_end: harness.card.Window.window.active,
-                                editor_text: harness.card.editor.text }
+                                editor_text: harness.card.styler.plain }
       harness.finish()
     }
   }

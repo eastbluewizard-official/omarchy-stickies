@@ -2,6 +2,40 @@
 
 All notable changes. Versions follow `manifest.json`; dates are ISO.
 
+## 1.4.0 - 2026-10-07
+
+### Added
+
+- Markup in notes, styled as you type: `**bold**`, `*italic*`,
+  `__underline__` (Markdown has no underline; here `__` means it),
+  `~~strike~~`, `==highlight==` (in the theme's accent) and `` `code` ``,
+  `# ` / `## ` headings, `- ` / `* ` bullets and `1. ` items whose
+  wrapped lines line up under the text. Checkbox lines take markup too.
+  While you edit a note the markers stay, faint; when it loses focus they
+  hide and only the styled words show. The body is still plain text with
+  the markers in it: the database, the CLI, `--json`, agents and chat see
+  exactly what you typed. Markers pair on one line, a lone `*` stays a
+  star, `\*` writes one, and nothing is parsed inside `` `code` ``.
+  Details and the full syntax: docs/notes.md.
+- Keys in a note: `Ctrl+B` bold, `Ctrl+I` italic, `Ctrl+U` underline,
+  `Ctrl+Shift+X` strike, `Ctrl+Shift+H` highlight, `Ctrl+E` code (wrap the
+  selection, or unwrap it; without one, a pair with the caret between) and
+  `Ctrl+L` a checkbox on the line (or off again).
+
+### Changed
+
+- Titles (a rolled-up note's header, All notes, the bar widget), search
+  snippets, reminder messages and the CLI's one-line listings show plain
+  words, without markers. Search still matches `**milk**` for "milk", and
+  a snippet is cut from the note's plain words, so a pair split by the
+  snippet's edge leaves no stray asterisk.
+- Embeddings are computed from the text without markers. Notes that have
+  markup are embedded again by themselves (their text no longer matches
+  the stored one); the others keep their vectors.
+- Undo and redo in a note (`Ctrl+Z`, `Ctrl+Shift+Z` / `Ctrl+Y`) are the
+  note's own history of the text, a word at a time; a shortcut or a
+  checkbox click is one step.
+
 ## 1.3.2 - 2026-10-07
 
 ### Security

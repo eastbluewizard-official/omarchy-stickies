@@ -153,7 +153,7 @@ class FrontModeQmlTest(unittest.TestCase):
 
     def test_empty_note_discarded_on_blur(self):
         card = self.src["NoteCard.qml"]
-        self.assertIn('editor.text.trim() === ""', card)
+        self.assertIn('styler.plain.trim() === ""', card)
         self.assertIn("discardIfEmpty", card)
         self.assertIn('request("discard"', self.svc)
         self.assertIn('request("clean"', self.svc)

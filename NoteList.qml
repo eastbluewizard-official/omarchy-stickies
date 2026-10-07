@@ -1,9 +1,12 @@
 import QtQuick
 import qs.Commons
+import "markup.js" as Markup
 
 // A titled list of notes for the bar panel: colour swatch, first line,
 // where it shows (workspace or "all"). Rows are plain objects
-// { nid, body, color, pinned, workspace }; clicking one emits picked(nid).
+// { nid, body, color, pinned, workspace, plain? }; clicking one emits
+// picked(nid). The line shows in plain words (no markup), unless `plain`
+// says the body is that already (a search snippet).
 Column {
   id: list
 
@@ -16,9 +19,12 @@ Column {
 
   spacing: Style.spacing.xs
 
-  function firstLine(body) {
+  function firstLine(body, plain) {
     var lines = String(body || "").split("\n")
-    for (var i = 0; i < lines.length; i++) if (lines[i].trim()) return lines[i].trim()
+    for (var i = 0; i < lines.length; i++) {
+      var l = (plain ? lines[i] : Markup.plainLine(lines[i])).trim()
+      if (l) return l
+    }
     return "(empty)"
   }
 
@@ -64,7 +70,7 @@ Column {
         anchors.verticalCenter: parent.verticalCenter
         // Note bodies are user text, never markup.
         textFormat: Text.PlainText
-        text: list.firstLine(row.modelData.body)
+        text: list.firstLine(row.modelData.body, row.modelData.plain)
         elide: Text.ElideRight
         color: list.foreground
         font.family: Style.font.family

@@ -17,6 +17,7 @@ re-executes under the venv's Python only for the commands that embed.
 """
 
 import argparse
+import functools
 import json
 import os
 import re
@@ -358,6 +359,283 @@ def fts_query_any(text):
     words under 3 letters: for questions in natural language."""
     words = [t for t in _TOKEN.findall(text or "") if len(t) >= 3 and _fold(t) not in _STOP]
     return " OR ".join('"%s"*' % t for t in dict.fromkeys(words)) or None
+
+
+# -- note markup ---------------------------------------------------------------
+# A note body is plain text with Markdown-ish markers in it: **bold**,
+# *italic*, __underline__, ~~strike~~, ==highlight==, `code`, and per line
+# "# " / "## " headings, "- " / "* " bullets, "1. " items, "[ ]" boxes. The
+# desktop styles them (markup.js parseLine, the same parser: the tests run
+# one table through both); everything that shows a note's words in a line
+# of its own (titles, snippets, reminders) and the embeddings use the text
+# without them. Markers pair on the same line; an opener is followed by a
+# non-space, its closer follows one (past any more of the marker's
+# character), and what they hold isn't only that character. `\` before ASCII punctuation makes it literal; inside
+# `code` nothing else is parsed. The body itself (DB, --json, chat) keeps them.
+
+M_BOLD, M_ITALIC, M_UNDERLINE, M_STRIKE, M_HIGHLIGHT, M_CODE, M_H1, M_H2 = 1, 2, 4, 8, 16, 32, 64, 128
+R_TEXT, R_MARK, R_HEAD, R_BULLET = 0, 1, 2, 3
+_PAIRS = (("**", M_BOLD), ("__", M_UNDERLINE), ("~~", M_STRIKE), ("==", M_HIGHLIGHT), ("*", M_ITALIC))
+_PUNCT = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
+_MARKUP_CHARS = re.compile(r"[*_~=`\\#+\-]")
+_INLINE_CHARS = re.compile(r"[*_~=`\\]")
+_LINE_CHECK = re.compile(r"^([ \t]*)(?:([-*+])[ \t]+)?\[[ xX]\][ \t]*")
+_LINE_HEAD = re.compile(r"^(#{1,2})[ \t]+")
+_LINE_BULLET = re.compile(r"^([ \t]*)([-*])[ \t]+")
+_LINE_NUMBER = re.compile(r"^([ \t]*)\d{1,9}[.)][ \t]+")
+
+
+def _is_space(c):
+    return c in (" ", "\t", "\u00a0")
+
+
+def line_kind(line):
+    """(kind, lead, hang, bullet, box) of one line: kind "", "h1", "h2",
+    "bullet", "number" or "check"; lead: where the inline text starts;
+    hang: the prefix wrapped lines align under; bullet / box: index of the
+    bullet character / the "[", or -1."""
+    m = _LINE_CHECK.match(line)
+    if m:
+        return "check", m.end(), m.end(), len(m.group(1)) if m.group(2) else -1, m.group(0).index("[")
+    m = _LINE_HEAD.match(line)
+    if m:
+        return ("h1" if len(m.group(1)) == 1 else "h2"), m.end(), 0, -1, -1
+    m = _LINE_BULLET.match(line)
+    if m:
+        return "bullet", m.end(), m.end(), len(m.group(1)), -1
+    m = _LINE_NUMBER.match(line)
+    if m:
+        return "number", m.end(), m.end(), -1, -1
+    return "", 0, 0, -1, -1
+
+
+def parse_line(line):
+    """One line -> (kind, bullet, box, hang, style bits per char, role per
+    char). The same parser as markup.js parseLine()."""
+    return _parse(line)[:6]
+
+
+def _parse(line, styles=True):
+    """parse_line, plus the [start, end) of every inline marker; without
+    `styles` the style bits aren't worked out (stripping needs none)."""
+    s, n = line, len(line)
+    marks = []
+    kind, lead, hang, bullet, box = line_kind(s)
+    base = M_H1 if kind == "h1" else M_H2 if kind == "h2" else 0
+    style, role = [base] * n, [R_TEXT] * n
+    if base:
+        role[:lead] = [R_HEAD] * lead
+    if bullet >= 0:
+        role[bullet] = R_BULLET
+    memo = {}
+
+    def special(i, end):
+        """The next character from i that can start a marker, an escape or
+        code (the others are stepped over in one go), or end."""
+        m = _INLINE_CHARS.search(s, i, end)
+        return m.start() if m else end
+
+    def escape_at(i, end):
+        return s[i] == "\\" and i + 1 < end and s[i + 1] in _PUNCT
+
+    def code_end(i, end):
+        if s[i] != "`":
+            return -1
+        j = s.find("`", i + 1)
+        return j if i + 1 < j < end else -1
+
+    def opens(m, i, end):  # the whole run of the marker's character counts
+        if not s.startswith(m, i):
+            return False
+        j = i + len(m)
+        while j < end and s[j] == m[0]:
+            j += 1
+        return j < end and not _is_space(s[j])
+
+    def closes(m, k, start):
+        j = k - 1
+        while j >= start and s[j] == m[0]:
+            j -= 1
+        return j >= start and not _is_space(s[j])
+
+    def only_marker(m, a, b):
+        return all(c == m[0] for c in s[a:b])
+
+    def closer(m, start, end):
+        key = (m, start, end)
+        if key in memo:
+            return memo[key]
+        memo[key] = -1  # no cycles: a nested search never comes back here
+        k, found = start, -1
+        while k < end:
+            k = special(k, end)
+            if k >= end:
+                break
+            if escape_at(k, end):
+                k += 2
+                continue
+            c = code_end(k, end)
+            if c >= 0:
+                k = c + 1
+                continue
+            skipped = False
+            # A longer marker that starts here and pairs up is nested: skip it.
+            for o, _ in _PAIRS:
+                if len(o) > len(m) and o.startswith(m) and opens(o, k, end):
+                    e = closer(o, k + len(o), end)
+                    if e >= 0:
+                        k, skipped = e + len(o), True
+                        break
+            if skipped:
+                continue
+            if s.startswith(m, k) and closes(m, k, start) and not only_marker(m, start, k):
+                found = k
+                break
+            for o, _ in _PAIRS:
+                if opens(o, k, end):
+                    e = closer(o, k + len(o), end)
+                    if e >= 0:
+                        k, skipped = e + len(o), True
+                        break
+            if not skipped:
+                k += 1
+        memo[key] = found
+        return found
+
+    def mark(a, b):
+        role[a:b] = [R_MARK] * (b - a)
+        marks.append((a, b))
+
+    def add(a, b, bit):
+        if not styles:
+            return
+        for j in range(a, b):
+            style[j] |= bit
+
+    def inline(start, end):
+        i = start
+        while i < end:
+            i = special(i, end)
+            if i >= end:
+                break
+            if escape_at(i, end):
+                mark(i, i + 1)
+                i += 2
+                continue
+            c = code_end(i, end)
+            if c >= 0:
+                mark(i, i + 1)
+                mark(c, c + 1)
+                add(i + 1, c, M_CODE)
+                i = c + 1
+                continue
+            for m, bit in _PAIRS:
+                if not opens(m, i, end):
+                    continue
+                e = closer(m, i + len(m), end)
+                if e < 0:
+                    continue
+                mark(i, i + len(m))
+                mark(e, e + len(m))
+                add(i + len(m), e, bit)
+                inline(i + len(m), e)
+                i = e + len(m)
+                break
+            else:
+                i += 1
+
+    inline(lead, n)
+    return kind, bullet, box, hang, style, role, marks
+
+
+def _dropped(line):
+    """The [start, end) stretches of a line that aren't its plain words:
+    markers, and a bullet with the spaces after it. None: nothing."""
+    if not _MARKUP_CHARS.search(line):
+        return None
+    if not _INLINE_CHARS.search(line):  # line markers only (most lines)
+        kind, lead, hang, bullet, box = line_kind(line)
+        if kind in ("h1", "h2"):
+            return [(0, lead)]
+        if bullet >= 0:
+            return [(bullet, box if kind == "check" else hang)]
+        return None
+    kind, lead, hang, bullet, box = line_kind(line)
+    drops = _parse(line, styles=False)[6]
+    if kind in ("h1", "h2"):
+        drops.append((0, lead))
+    elif bullet >= 0:
+        drops.append((bullet, box if kind == "check" else hang))
+    out = []
+    for a, b in sorted(drops):  # merged: markers often touch
+        if out and a <= out[-1][1]:
+            out[-1] = (out[-1][0], max(out[-1][1], b))
+        else:
+            out.append((a, b))
+    return out or None
+
+
+def plain_line(line):
+    """A line's plain words (markup.js plainLine)."""
+    drops = _dropped(line)
+    if not drops:
+        return line
+    parts, last = [], 0
+    for a, b in drops:
+        parts.append(line[last:a])
+        last = b
+    parts.append(line[last:])
+    return "".join(parts)
+
+
+def strip_markup(text):
+    """The whole body in plain words, line by line."""
+    return "\n".join(plain_line(line) for line in (text or "").split("\n"))
+
+
+def strip_map(text):
+    """(plain words, idx): idx[i] is where raw offset i lands in the plain
+    text (a marker maps to the next character kept); len(text) + 1 long."""
+    out, idx, n = [], [], 0
+    for li, line in enumerate((text or "").split("\n")):
+        if li:
+            idx.append(n)
+            out.append("\n")
+            n += 1
+        last = 0
+        for a, b in (_dropped(line) or []) + [(len(line), len(line))]:
+            idx.extend(range(n, n + a - last))  # kept: one each
+            out.append(line[last:a])
+            n += a - last
+            idx.extend([n] * (b - a))  # dropped: the next kept one
+            last = b
+    idx.append(n)
+    return "".join(out), idx
+
+
+def plain_hit_snippet(body, snippet, spans):
+    """An FTS5 snippet of the raw body (with its highlight spans) in plain
+    words: the window is found in the body and cut from the body's plain
+    words, so a pair of markers split by the window's edge leaves no stray
+    asterisk. (text, spans) like split_highlights."""
+    if not _MARKUP_CHARS.search(snippet):
+        return snippet, spans
+    plain, idx = strip_map(body)
+    for lead in ((1, 0) if snippet.startswith("…") else (0,)):
+        for trail in ((1, 0) if snippet.endswith("…") else (0,)):
+            window = snippet[lead:len(snippet) - trail]
+            at = body.find(window)
+            if at < 0 or not window:
+                continue
+            a, b = idx[at], idx[at + len(window)]
+            text = "…" * lead + plain[a:b] + "…" * trail
+            out = []
+            for s, e in spans:
+                s, e = idx[at + max(0, s - lead)] - a + lead, idx[at + min(len(window), e - lead)] - a + lead
+                if e > s:
+                    out.append([s, e])
+            return text, out
+    return plain_line(snippet), []  # not found (can't happen): plain words, no highlight
 
 
 _HL_START, _HL_END = "\x01", "\x02"
@@ -906,7 +1184,8 @@ def run_setup(name=None, yes=False, backfill=True, say=None):
 
 
 def doc_text(body):
-    return (body or "").strip()
+    """What a note's vector is computed from: its words, without markup."""
+    return strip_markup(body or "").strip()
 
 
 def body_hash(model, text):
@@ -976,13 +1255,13 @@ def find_reminders(body, now=None):
 
 def reminder_text(body, spec):
     """What a reminder says: the rest of its line, else the note's first
-    line (without the `@` part either way)."""
+    line (without the `@` part either way), in plain words."""
     for s, _, m in find_reminders(body):
         if s == spec:
             end = body.find("\n", m.end())
-            rest = body[m.end():None if end < 0 else end].strip(" \t-:,;")
+            rest = plain_line(body[m.end():None if end < 0 else end]).strip(" \t-:,;")
             start = body.rfind("\n", 0, m.start()) + 1
-            before = body[start:m.start()].strip(" \t-:,;")
+            before = plain_line(body[start:m.start()]).strip(" \t-:,;")
             if rest or before:
                 return (rest or before)[:200]
             break
@@ -1508,7 +1787,7 @@ class Store:
                 raise StickiesError("semantic search unavailable: " + (embedder_problem() or "model not loaded yet"))
             hits = []
             for n, sim in self.search_semantic(query, emb, limit, archived, tags=tags):
-                n["snippet"], n["highlights"] = plain_snippet(n["body"], query, tokens)
+                n["snippet"], n["highlights"] = plain_snippet(strip_markup(n["body"]), query, tokens)
                 n.update(score=round(sim, 6), match="semantic", similarity=round(sim, 4))
                 hits.append(n)
             return hits
@@ -1532,7 +1811,7 @@ class Store:
         for h in hits:
             h["score"] = round(h["score"], 6)
             if h["match"] == "semantic":
-                h["snippet"], h["highlights"] = plain_snippet(h["body"], query, tokens)
+                h["snippet"], h["highlights"] = plain_snippet(strip_markup(h["body"]), query, tokens)
         return hits
 
     def search_semantic(self, query, embedder, limit=20, archived=False, tags=None):
@@ -1657,7 +1936,7 @@ class Store:
         hits = []
         for r in rows:
             d = self.to_dict(r)
-            d["snippet"], d["highlights"] = split_highlights(r["snip"])
+            d["snippet"], d["highlights"] = plain_hit_snippet(r["body"], *split_highlights(r["snip"]))
             d["score"] = -r["rank"]
             d["match"], d["similarity"] = "fts", None
             hits.append(d)
@@ -3259,22 +3538,34 @@ _CHECK = re.compile(r"^[ \t]*(?:[-*+][ \t]+)?\[([ xX])\]", re.M)
 _CHECK_PREFIX = re.compile(r"^[ \t]*(?:[-*+][ \t]+)?\[[ xX]\][ \t]*")
 BRIEF_TEXT = 500
 BRIEF_TITLE = 120  # one elided line in the list
+TITLE_SCAN = 400
 
 
 def note_title(body):
-    """The first line with text, without a checkbox (a rolled note's title)."""
+    """The first line with text, without a checkbox, in plain words (a
+    rolled note's title). A title shows at most a line, so only the first
+    TITLE_SCAN characters of a long one are looked at."""
     for line in (body or "").split("\n"):
-        t = _CHECK_PREFIX.sub("", line).strip()
+        t = _title_line(line[:TITLE_SCAN])
         if t:
             return t
     return ""
+
+
+@functools.lru_cache(maxsize=8192)
+def _title_line(line):
+    # Cached: serve builds every note's title on each All notes open.
+    return plain_line(_CHECK_PREFIX.sub("", line)).strip()
 
 
 def brief_row(n):
     """A note as the All notes view needs it: title, checklist progress
     ([done, total] or null) and `hay`, what its text filter looks in (the
     first BRIEF_TEXT characters and the tags, lower-cased), instead of the
-    whole body and geometry: 2,000 notes go over the pipe on every open."""
+    whole body and geometry: 2,000 notes go over the pipe on every open.
+    The title is in plain words; `hay` keeps the markers (the filter finds
+    "milk" in "**milk**" as it is, and stripping every row on each open
+    tripled the cost of the list)."""
     body = n["body"]
     marks = _CHECK.findall(body) if "[" in body else []
     hay = (body[:BRIEF_TEXT] + "\n" + " ".join(n["tags"])).lower()
@@ -4010,7 +4301,8 @@ def _tty():
 
 
 def _first_line(body, width=60):
-    line = next((l.strip() for l in body.splitlines() if l.strip()), "")
+    """The first line with text, in plain words, cut to width."""
+    line = next((t for t in (plain_line(l).strip() for l in body.splitlines()) if t), "")
     return line if len(line) <= width else line[: width - 1] + "…"
 
 

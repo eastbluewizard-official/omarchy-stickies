@@ -39,9 +39,9 @@ or its meaning offline, and let you ask questions about them.
   shown as small chips under the header. Search finds them by tag.
 - [All notes](#tags-and-all-notes) (`SUPER + ALT + O`): every note on every
   workspace in one list, filtered by tag and by text as you type.
-- Checklists: `- [ ]` lines become checkboxes, and the header counts what is
-  done.
-- [Markup](docs/notes.md#markup) as you type: `**bold**`, `*italic*`,
+- [Checklists](#checklists-and-markup): `- [ ]` lines become checkboxes,
+  and the header counts what is done.
+- [Markup](#checklists-and-markup) as you type: `**bold**`, `*italic*`,
   `__underline__`, `~~strike~~`, `==highlight==`, `` `code` ``, headings,
   bullets and numbered lists. The markers stay faint while you edit and
   hide when you're done; the note itself stays plain text.
@@ -154,6 +154,32 @@ Double-click a header to roll the note up. The `+` button in the corner adds
 a note. The bar widget's middle click shows or hides all notes. Checklists,
 reminders, tidy and the rest: [docs/notes.md](docs/notes.md). Each overlay
 step by step: [docs/shell.md](docs/shell.md).
+
+## Checklists and markup
+
+A line that starts with `[ ]` or `- [ ]` is a checkbox: click it to tick it
+off, and the note's header counts what is done (`1/4`). `Ctrl + L` adds or
+removes one on the line you are on.
+
+![Two checklist notes: groceries with 1 of 4 done, a reading list with 1 of 3 done](docs/checklists.png)
+
+Notes take a little Markdown-style markup, styled as you type. While you
+edit, the markers stay where you typed them, faint; when you leave the
+note they hide and only the styled words show. The note itself stays
+plain text, so the CLI, scripts, agents and chat see exactly what you
+typed.
+
+| You type | You see |
+|---|---|
+| `**bold**`, `*italic*`, `__underline__` | **bold**, *italic*, underlined |
+| `~~strike~~`, `==highlight==` | ~~struck through~~, a marker-pen background |
+| `` `code` `` | monospace on a faint background |
+| `# Heading`, `- item`, `1. item` | a bigger line, bullets and numbered items that wrap neatly |
+
+![Four notes with a heading, bullets, bold, italic, struck, highlighted, underlined and code words, and a checklist](docs/markup-notes.png)
+
+The keys are under [Keys](#keys); the full rules (pairs, escapes, what
+stays literal) are in [docs/notes.md](docs/notes.md#markup).
 
 ## Tags and All notes
 
